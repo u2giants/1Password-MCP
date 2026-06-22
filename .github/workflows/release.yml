@@ -1,0 +1,98 @@
+name: Release (npm Trusted Publishing)
+
+# Token-free publishing to npm via OIDC Trusted Publishing.
+#
+# How a release works:
+#   1. Bump the version in package.json, server.json (top-level + packages[0]),
+#      and src/config.ts (SERVER_VERSION) — keep all three in sync.
+#      Helper: `node scripts/bump-version.mjs <version>`
+#   2. Commit on the publish/u2giants-scope branch.
+#   3. Create and push a tag `v<version>` (e.g. v2.4.3) FROM that branch.
+#   4. This workflow runs and publishes to npm. No NPM_TOKEN / NODE_AUTH_TOKEN.
+#
+# Trusted Publishing must be configured once on npmjs.com for the package
+# @u2giants/1password-mcp (Settings -> Trusted Publisher), pointing at:
+#   user/org = u2giants, repo = 1Password-MCP, workflow = release.yml.
+# Provenance is generated automatically; no manual --provenance flag needed.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write   # required for OIDC — this is what makes it token-free
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      # Trusted Publishing requires npm >= 11.5.0. The Node 20 runner ships an
+      # older npm, so upgrade the global npm before publishing.
+      - name: Upgrade npm (Trusted Publishing needs npm >= 11.5.0)
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate package name and version alignment
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          SERVER_VERSION=$(node -p "require('./server.json').version")
+          SERVER_PKG_VERSION=$(node -p "require('./server.json').packages[0].version")
+          CONFIG_VERSION=$(node -e "const fs=require('fs'); const s=fs.readFileSync('./src/config.ts','utf8'); const m=s.match(/export const SERVER_VERSION = \"([^\"]+)\";/); if(!m){process.exit(1)}; console.log(m[1]);")
+          TAG="${GITHUB_REF_NAME}"
+
+          echo "tag:                       ${TAG}"
+          echo "package.json name:         ${PACKAGE_NAME}"
+          echo "package.json version:      ${PACKAGE_VERSION}"
+          echo "server.json version:       ${SERVER_VERSION}"
+          echo "server.json pkg version:   ${SERVER_PKG_VERSION}"
+          echo "src/config.ts version:     ${CONFIG_VERSION}"
+
+          # Guard: never publish the upstream @takescake name from this workflow.
+          if [ "${PACKAGE_NAME}" != "@u2giants/1password-mcp" ]; then
+            echo "Refusing to publish: package name is '${PACKAGE_NAME}', expected '@u2giants/1password-mcp'."
+            echo "Tags must be created from the publish/u2giants-scope branch, not master."
+            exit 1
+          fi
+
+          # Guard: all four version locations must agree.
+          if [ "${PACKAGE_VERSION}" != "${SERVER_VERSION}" ] || \
+             [ "${PACKAGE_VERSION}" != "${SERVER_PKG_VERSION}" ] || \
+             [ "${PACKAGE_VERSION}" != "${CONFIG_VERSION}" ]; then
+            echo "Version mismatch. package.json, server.json (x2), and src/config.ts must match."
+            exit 1
+          fi
+
+          # Guard: the tag must be v<package version>.
+          if [ "${TAG}" != "v${PACKAGE_VERSION}" ]; then
+            echo "Tag '${TAG}' does not match 'v${PACKAGE_VERSION}'."
+            exit 1
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # No NODE_AUTH_TOKEN / NPM_TOKEN: authentication is via OIDC.
+      # prepublishOnly re-runs clean+build+test; provenance is automatic.
+      - name: Publish to npm (Trusted Publishing)
+        run: npm publish --access public
