@@ -49,13 +49,14 @@ describe("MCP Tools", () => {
     registerAllTools(server);
   });
 
-  it("registers all 10 tools", () => {
-    expect(registeredTools.size).toBe(10);
+  it("registers all 11 tools", () => {
+    expect(registeredTools.size).toBe(11);
     expect(registeredTools.has("vault_list")).toBe(true);
     expect(registeredTools.has("item_lookup")).toBe(true);
     expect(registeredTools.has("item_delete")).toBe(true);
     expect(registeredTools.has("item_get")).toBe(true);
     expect(registeredTools.has("item_edit")).toBe(true);
+    expect(registeredTools.has("item_list")).toBe(true);
     expect(registeredTools.has("password_create")).toBe(true);
     expect(registeredTools.has("password_read")).toBe(true);
     expect(registeredTools.has("password_update")).toBe(true);
@@ -415,6 +416,64 @@ describe("MCP Tools", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("does not support updating items");
+    });
+  });
+
+  describe("item_list", () => {
+    it("returns item metadata without secret values", async () => {
+      mockedGetClient.mockResolvedValue({
+        items: {
+          list: vi.fn().mockResolvedValue([
+            {
+              id: "i1",
+              title: "GitHub",
+              category: "Login",
+              vaultId: "v1",
+              tags: ["dev"],
+              websites: [],
+              state: "active",
+              createdAt: new Date("2024-01-01T00:00:00.000Z"),
+              updatedAt: new Date("2024-02-01T00:00:00.000Z"),
+            },
+            {
+              id: "i2",
+              title: "AWS",
+              category: "Password",
+              vaultId: "v1",
+              tags: [],
+              websites: [],
+              state: "active",
+              createdAt: new Date("2024-01-01T00:00:00.000Z"),
+              updatedAt: new Date("2024-03-01T00:00:00.000Z"),
+            },
+          ]),
+        },
+      } as any);
+
+      const handler = registeredTools.get("item_list")!.handler;
+      const result = await handler({ vaultId: "v1" });
+      const data = JSON.parse(result.content[0].text);
+
+      expect(data.count).toBe(2);
+      expect(data.items[0]).toEqual({
+        id: "i1",
+        title: "GitHub",
+        category: "Login",
+        tags: ["dev"],
+        updatedAt: "2024-02-01T00:00:00.000Z",
+      });
+      // no value/password fields leaked
+      expect(JSON.stringify(data)).not.toContain("value");
+    });
+
+    it("returns error when listing fails", async () => {
+      mockedGetClient.mockRejectedValue(new Error("list boom"));
+
+      const handler = registeredTools.get("item_list")!.handler;
+      const result = await handler({ vaultId: "v1" });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("list boom");
     });
   });
 });
