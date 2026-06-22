@@ -35,29 +35,49 @@ git checkout publish/u2giants-scope
 #    Or use npm to bump package.json automatically:
 npm version patch   # 2.4.2 -> 2.4.3  (use "minor" for new features)
 
-# 2. Publish (this auto-runs clean + build + test via prepublishOnly).
-#    npm requires two-factor auth to publish, so pass your 6-digit code:
-npm publish --access public --otp=123456   # replace 123456 with your authenticator code
+# 2. Authenticate with the npm access token, then publish
+#    (publish auto-runs clean + build + test via prepublishOnly):
+npm config set //registry.npmjs.org/:_authToken=<npm-token>
+npm publish --access public
 ```
 
 `--access public` is required — scoped packages are private by default, and
 public publishing is free.
 
-### Two-factor authentication (the `--otp` flag)
+### Authentication: access token (OTP is no longer supported)
 
-npm requires 2FA to publish. If you omit `--otp` you'll get
-`npm error code E403 ... Two-factor authentication ... is required`. Two ways
-to satisfy it:
+npm no longer accepts interactive OTP codes for publishing — use an **access
+token**. Create one at npmjs.com → avatar → **Access Tokens** → **Generate New
+Token** → **Granular Access Token** with **Read and write** on the `@u2giants`
+scope (or "All packages" for the very first publish, since the package doesn't
+exist yet to be selected). A classic **Automation** token also works and is
+simplest for a first publish.
 
-- **Interactive (one-off):** add `--otp=<6-digit code>` from the authenticator
-  app linked to your npm account.
-- **Unattended (lets an AI session publish for you):** create a **Granular
-  Access Token** at npmjs.com (Access Tokens → Generate → Granular) with
-  read/write on the `@u2giants` scope and **"bypass 2FA" enabled**, then store
-  it once on the machine:
-  `npm config set //registry.npmjs.org/:_authToken=<token>`. After that,
-  `npm publish --access public` works with no prompt — so a future AI session
-  can do the whole release by following this file.
+Authenticate with it before publishing:
+
+```powershell
+npm config set //registry.npmjs.org/:_authToken=<npm-token>
+```
+
+### Storing the token in 1Password (so any AI session can publish)
+
+The token is kept in 1Password instead of permanently in `~/.npmrc`. It lives in
+the **`vibe_coding`** vault (the only vault the OP service account can read), as
+a Password item titled **`npm-publish-token`**, with the token in the password
+field. Secret reference:
+
+```
+op://vibe_coding/npm-publish-token/password
+```
+
+A future AI session publishes by:
+
+1. Reading the token via the 1Password MCP (`password_read` on the reference above).
+2. `npm config set //registry.npmjs.org/:_authToken=<value>`
+3. `npm publish --access public`
+
+To rotate: generate a new npm token, update the `npm-publish-token` item in
+1Password, done — nothing else references the old value.
 
 ## After publishing
 
