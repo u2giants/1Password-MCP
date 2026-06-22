@@ -1,5 +1,5 @@
 {
-  "name": "@takescake/1password-mcp",
+  "name": "@u2giants/1password-mcp",
   "version": "2.4.2",
   "private": false,
   "type": "module",
@@ -7,13 +7,13 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CakeRepository/1Password-MCP.git"
+    "url": "https://github.com/u2giants/1Password-MCP.git"
   },
-  "homepage": "https://github.com/CakeRepository/1Password-MCP#readme",
+  "homepage": "https://github.com/u2giants/1Password-MCP#readme",
   "bugs": {
-    "url": "https://github.com/CakeRepository/1Password-MCP/issues"
+    "url": "https://github.com/u2giants/1Password-MCP/issues"
   },
-  "mcpName": "io.github.CakeRepository/1password",
+  "mcpName": "io.github.u2giants/1password",
   "keywords": [
     "mcp",
     "model-context-protocol",
