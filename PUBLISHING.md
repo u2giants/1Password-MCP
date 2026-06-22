@@ -35,12 +35,29 @@ git checkout publish/u2giants-scope
 #    Or use npm to bump package.json automatically:
 npm version patch   # 2.4.2 -> 2.4.3  (use "minor" for new features)
 
-# 2. Publish (this auto-runs clean + build + test via prepublishOnly):
-npm publish --access public
+# 2. Publish (this auto-runs clean + build + test via prepublishOnly).
+#    npm requires two-factor auth to publish, so pass your 6-digit code:
+npm publish --access public --otp=123456   # replace 123456 with your authenticator code
 ```
 
 `--access public` is required — scoped packages are private by default, and
 public publishing is free.
+
+### Two-factor authentication (the `--otp` flag)
+
+npm requires 2FA to publish. If you omit `--otp` you'll get
+`npm error code E403 ... Two-factor authentication ... is required`. Two ways
+to satisfy it:
+
+- **Interactive (one-off):** add `--otp=<6-digit code>` from the authenticator
+  app linked to your npm account.
+- **Unattended (lets an AI session publish for you):** create a **Granular
+  Access Token** at npmjs.com (Access Tokens → Generate → Granular) with
+  read/write on the `@u2giants` scope and **"bypass 2FA" enabled**, then store
+  it once on the machine:
+  `npm config set //registry.npmjs.org/:_authToken=<token>`. After that,
+  `npm publish --access public` works with no prompt — so a future AI session
+  can do the whole release by following this file.
 
 ## After publishing
 

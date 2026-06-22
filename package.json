@@ -7,7 +7,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/u2giants/1Password-MCP.git"
+    "url": "git+https://github.com/u2giants/1Password-MCP.git"
   },
   "homepage": "https://github.com/u2giants/1Password-MCP#readme",
   "bugs": {
