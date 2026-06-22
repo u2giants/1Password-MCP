@@ -12,12 +12,15 @@ A community-built [Model Context Protocol (MCP)](https://modelcontextprotocol.io
 
 ## Features
 
-### Tools (8)
+### Tools (11)
 
 | Tool | Description |
 |------|-------------|
 | `vault_list` | List all accessible vaults |
 | `item_lookup` | Search items by title in a vault |
+| `item_list` | List all items in a vault (id, title, category, tags, updatedAt) |
+| `item_get` | Retrieve a full item (title, category, tags, notes, fields); conceals secret values unless `reveal` is true |
+| `item_edit` | Edit an item's title, notes, tags, URL, and fields (upsert/remove); empty `notes` clears notes |
 | `item_delete` | Delete an item from a vault |
 | `password_create` | Create a new password/login item |
 | `password_read` | Retrieve a password via secret reference (`op://vault/item/field`) or vault/item ID |
