@@ -71,22 +71,22 @@ tests/
 
 ## Pull Request Process
 
-1. Fork the repo and create a feature branch from `master`.
+1. Fork the repo and create a feature branch from `main`.
 2. Make your changes and add/update tests.
 3. Run `npm run build && npm test` to ensure everything passes.
 4. Open a pull request with a clear description of your changes.
 
 ## Release Process (for Maintainers)
 
-> This fork (`@u2giants` scope) publishes from the **`publish/u2giants-scope`**
-> branch via GitHub Actions **Trusted Publishing (OIDC)** — no npm token.
-> `master` is reserved for the upstream PR and is not the publish branch. The
-> canonical, step-by-step release guide is **[PUBLISHING.md](PUBLISHING.md)**;
-> see also [AGENTS.md](AGENTS.md).
+> This fork (`@u2giants` scope) publishes from the **`main`** branch (the
+> default) via GitHub Actions **Trusted Publishing (OIDC)** — no npm token. The
+> `feat/item-get-edit-list` branch backs the upstream PR and is not the publish
+> branch. The canonical, step-by-step release guide is
+> **[PUBLISHING.md](PUBLISHING.md)**; see also [AGENTS.md](AGENTS.md).
 
 Short version:
 
-1. On `publish/u2giants-scope`, bump the version with
+1. On `main`, bump the version with
    `node scripts/bump-version.mjs <version>` (syncs `package.json`,
    `server.json` ×2, and `src/config.ts`).
 2. Update `CHANGELOG.md`.

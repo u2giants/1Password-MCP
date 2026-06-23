@@ -6,7 +6,7 @@ name: Release (npm Trusted Publishing)
 #   1. Bump the version in package.json, server.json (top-level + packages[0]),
 #      and src/config.ts (SERVER_VERSION) — keep all three in sync.
 #      Helper: `node scripts/bump-version.mjs <version>`
-#   2. Commit on the publish/u2giants-scope branch.
+#   2. Commit on the main branch.
 #   3. Create and push a tag `v<version>` (e.g. v2.4.3) FROM that branch.
 #   4. This workflow runs and publishes to npm. No NPM_TOKEN / NODE_AUTH_TOKEN.
 #
@@ -68,7 +68,7 @@ jobs:
           # Guard: never publish the upstream @takescake name from this workflow.
           if [ "${PACKAGE_NAME}" != "@u2giants/1password-mcp" ]; then
             echo "Refusing to publish: package name is '${PACKAGE_NAME}', expected '@u2giants/1password-mcp'."
-            echo "Tags must be created from the publish/u2giants-scope branch, not master."
+            echo "Tags must be created from the main branch (not feat/item-get-edit-list)."
             exit 1
           fi
 

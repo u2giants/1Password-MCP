@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Token-free publishing (OIDC)** — Releases now publish to npm via GitHub
   Actions Trusted Publishing instead of a stored npm token. Pushing a `v*` tag
-  from `publish/u2giants-scope` triggers `release.yml`, which authenticates with
+  from `main` triggers `release.yml`, which authenticates with
   a short-lived OIDC credential and generates provenance automatically. No npm
   token is created, stored, or rotated.
 - **Docs** — `AGENTS.md` is now the canonical operating guide and documentation

@@ -16,10 +16,10 @@ Claude-specific context and does not duplicate it.
 
 This repo is a fork with a deliberate split:
 
-- `publish/u2giants-scope` → package `@u2giants/1password-mcp` (the published
-  fork). **Do release/publishing work here.**
-- `master` → package `@takescake/1password-mcp` (backs the upstream PR). **Do not
-  "fix" its package name.**
+- `main` → package `@u2giants/1password-mcp` (the published fork; default branch).
+  **Do release/publishing work here.**
+- `feat/item-get-edit-list` → package `@takescake/1password-mcp` (backs upstream
+  PR #7). **Do not "fix" its package name.**
 
 Confirm the branch before editing version/package metadata.
 

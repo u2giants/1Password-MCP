@@ -13,23 +13,23 @@ Publishing is fully automated by GitHub Actions using npm
 **Trusted Publishing** (OIDC). **There is no npm token to manage or rotate** —
 the runner proves its identity to npm via a short-lived OIDC credential.
 
-You release by pushing a `v*` git tag from the `publish/u2giants-scope` branch.
+You release by pushing a `v*` git tag from the `main` branch.
 The [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow
 then builds, tests, and publishes to npm automatically — including
 **provenance**, which Trusted Publishing generates for you.
 
-Everything happens on the **`publish/u2giants-scope`** branch. Do **not**
-publish from `master` — `master`'s `package.json` is named
+Everything happens on the **`main`** branch (the default). Do **not** publish
+from `feat/item-get-edit-list` — that branch's `package.json` is named
 `@takescake/1password-mcp` because it backs the upstream PR. (The workflow also
 refuses to publish anything not named `@u2giants/1password-mcp`, as a safety
 net.)
 
 ## Release a new version
 
-From the repo root, on the `publish/u2giants-scope` branch:
+From the repo root, on the `main` branch:
 
 ```powershell
-git checkout publish/u2giants-scope
+git checkout main
 git pull
 
 # 1. Bump the version in ALL of: package.json, server.json (top-level
@@ -43,7 +43,7 @@ node scripts/bump-version.mjs patch     # 2.4.2 -> 2.4.3
 git diff
 git commit -am "release: version 2.4.3"
 git tag v2.4.3
-git push origin publish/u2giants-scope --follow-tags
+git push origin main --follow-tags
 ```
 
 Pushing the `v2.4.3` tag triggers `release.yml`, which:
@@ -107,13 +107,13 @@ Codex so they relaunch the server.
 - **Workflow didn't trigger** — confirm you pushed the tag (`--follow-tags` or
   `git push origin v2.4.3`) and that it matches `v*`.
 - **Name guard failed** — you tagged a commit whose `package.json` isn't
-  `@u2giants/1password-mcp` (e.g. you tagged `master`). Tag from
-  `publish/u2giants-scope`.
+  `@u2giants/1password-mcp` (e.g. you tagged `feat/item-get-edit-list`). Tag from
+  `main`.
 
 ## Where things live
 
 - **This server's code (the fork):** <https://github.com/u2giants/1Password-MCP>
-  - `publish/u2giants-scope` branch → the version published to npm.
+  - `main` branch (default) → the version published to npm.
   - `feat/item-get-edit-list` branch → the PR back to the original project.
 - **npm package:** <https://www.npmjs.com/package/@u2giants/1password-mcp>
 - **Upstream project:** <https://github.com/CakeRepository/1Password-MCP>

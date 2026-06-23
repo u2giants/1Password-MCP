@@ -14,7 +14,7 @@
  * After running: review `git diff`, commit, then tag and push:
  *   git commit -am "release: version <v>"
  *   git tag v<v>
- *   git push origin publish/u2giants-scope --follow-tags
+ *   git push origin main --follow-tags
  *
  * The release.yml GitHub Actions workflow publishes to npm on the tag push
  * via Trusted Publishing (OIDC) — no token required.
@@ -95,4 +95,4 @@ console.log("");
 console.log("Next:");
 console.log(`  git commit -am "release: version ${next}"`);
 console.log(`  git tag v${next}`);
-console.log("  git push origin publish/u2giants-scope --follow-tags");
+console.log("  git push origin main --follow-tags");
