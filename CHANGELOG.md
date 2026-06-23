@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.3] - 2026-06-22
+
+### Changed
+
+- **Token-free publishing (OIDC)** — Releases now publish to npm via GitHub
+  Actions Trusted Publishing instead of a stored npm token. Pushing a `v*` tag
+  from `publish/u2giants-scope` triggers `release.yml`, which authenticates with
+  a short-lived OIDC credential and generates provenance automatically. No npm
+  token is created, stored, or rotated.
+- **Docs** — `AGENTS.md` is now the canonical operating guide and documentation
+  router; added `docs/architecture.md`, `docs/configuration.md`,
+  `docs/development.md`, `CLAUDE.md`, and `scripts/bump-version.mjs`.
+
+> No functional changes to the server runtime; the published code is unchanged
+> from 2.4.2 apart from the version bump.
+
 ## [2.4.2] - 2026-04-25
 
 ### Changed
