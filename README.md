@@ -147,6 +147,7 @@ On macOS, you can also omit `OP_SERVICE_ACCOUNT_TOKEN` and set `OP_KEYCHAIN_SERV
 - **Config files** -- Keep MCP config files out of version control (add to `.gitignore`).
 - **Secret references** -- Prefer `op://...` references over copying raw passwords into prompts or files.
 - **Least privilege** -- Use dedicated vaults and limited-scope service accounts for automation workflows.
+- **Vault convention (u2giants projects)** -- In the maintainer's own projects, automation secrets live in the **`vibe_coding`** vault only -- the single vault the shared service account can read -- referenced as `op://vibe_coding/<item>/<field>`. (Convention only; the server itself works with any vault the token can access.)
 
 ---
 

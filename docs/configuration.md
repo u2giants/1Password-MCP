@@ -44,6 +44,14 @@ or `--flag=value`.
 The resolved source is recorded as `tokenSource` (`args` | `env` | `keychain` |
 `missing`) and logged at startup.
 
+## Vault convention (u2giants)
+
+Across the owner's projects, **all secrets live in the `vibe_coding` 1Password
+vault — and only `vibe_coding`** (the single vault the shared service account can
+read). Reference them as `op://vibe_coding/<item>/<field>`. This is an operating
+convention, not a constraint of the server, which works with any vault the token
+can access.
+
 ## Feature flags
 
 There are **no feature flags** in this project.

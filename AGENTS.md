@@ -265,6 +265,13 @@ Equivalent CLI flags (override env): `--service-account-token` / `--token`,
 `--log-level`, `--integration-name`, `--integration-version`. Token precedence:
 CLI flag → `OP_SERVICE_ACCOUNT_TOKEN` → macOS Keychain.
 
+**Vault convention (u2giants):** store and read all automation secrets in the
+**`vibe_coding`** 1Password vault — the only vault the shared service account can
+read. Reference them as `op://vibe_coding/<item>/<field>`. (The deprecated npm
+publish token lived at `op://vibe_coding/npm-publish-token`.) This is the owner's
+operating convention, not a constraint of the server itself, which works with any
+vault the token can access.
+
 **CI publishing uses no secret at all** — the release workflow authenticates to
 npm via OIDC (Trusted Publishing). See [Deployment](#deployment).
 
