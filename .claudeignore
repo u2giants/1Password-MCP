@@ -1,0 +1,25 @@
+# Files that should not consume AI context.
+# Keep in sync with .cursorignore and the "What to ignore" section of AGENTS.md.
+
+# Third-party dependencies
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Test output
+coverage/
+
+# Generated lockfile (read only when debugging dependencies)
+package-lock.json
+
+# MCP publisher CLI artifacts
+mcp-publisher
+mcp-publisher.exe
+mcp-publisher.tar.gz
+.mcpregistry*
+
+# Logs
+*.log

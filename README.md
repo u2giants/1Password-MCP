@@ -1,12 +1,15 @@
 # 1Password MCP Server
 
-[![CI](https://github.com/CakeRepository/1Password-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/CakeRepository/1Password-MCP/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@takescake/1password-mcp)](https://www.npmjs.com/package/@takescake/1password-mcp)
+[![CI](https://github.com/u2giants/1Password-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/u2giants/1Password-MCP/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@u2giants/1password-mcp)](https://www.npmjs.com/package/@u2giants/1password-mcp)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 A community-built [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that connects MCP-compatible AI clients (Claude Desktop, VS Code Copilot, OpenAI Codex, Gemini, etc.) to **1Password** vaults via a [Service Account](https://developer.1password.com/docs/service-accounts/).
 
-> **Not an official 1Password product.** This is a community project.
+> **Not an official 1Password product.** This is a community project — a fork of
+> [CakeRepository/1Password-MCP](https://github.com/CakeRepository/1Password-MCP)
+> published to npm under the `@u2giants` scope. New developers/AI sessions:
+> read [AGENTS.md](AGENTS.md) first.
 
 ---
 
@@ -63,7 +66,7 @@ A community-built [Model Context Protocol (MCP)](https://modelcontextprotocol.io
   "mcpServers": {
     "1password": {
       "command": "npx",
-      "args": ["-y", "@takescake/1password-mcp"],
+      "args": ["-y", "@u2giants/1password-mcp"],
       "env": {
         "OP_SERVICE_ACCOUNT_TOKEN": "YOUR_SERVICE_ACCOUNT_TOKEN"
       }
@@ -81,7 +84,7 @@ If you do not want to store the service account token directly in your MCP confi
   "mcpServers": {
     "1password": {
       "command": "npx",
-      "args": ["-y", "@takescake/1password-mcp"],
+      "args": ["-y", "@u2giants/1password-mcp"],
       "env": {
         "OP_KEYCHAIN_SERVICE": "op-service-account-claude-automation",
         "OP_KEYCHAIN_ACCOUNT": "your-macos-username"
@@ -100,7 +103,7 @@ Precedence is: CLI arguments (`--service-account-token` / `--token`) > `OP_SERVI
 ```toml
 [mcp_servers."1password"]
 command = "npx"
-args = ["-y", "@takescake/1password-mcp"]
+args = ["-y", "@u2giants/1password-mcp"]
 
 [mcp_servers."1password".env]
 OP_SERVICE_ACCOUNT_TOKEN = "YOUR_SERVICE_ACCOUNT_TOKEN"
@@ -111,7 +114,7 @@ OP_SERVICE_ACCOUNT_TOKEN = "YOUR_SERVICE_ACCOUNT_TOKEN"
 ```toml
 [mcp_servers."1password"]
 command = "npx"
-args = ["-y", "@takescake/1password-mcp"]
+args = ["-y", "@u2giants/1password-mcp"]
 env_vars = ["OP_SERVICE_ACCOUNT_TOKEN"]
 ```
 
@@ -151,7 +154,7 @@ On macOS, you can also omit `OP_SERVICE_ACCOUNT_TOKEN` and set `OP_KEYCHAIN_SERV
 
 ```bash
 # Clone and install
-git clone https://github.com/CakeRepository/1Password-MCP.git
+git clone https://github.com/u2giants/1Password-MCP.git
 cd 1Password-MCP
 npm install
 
@@ -178,23 +181,19 @@ src/
   config.ts             # CLI args, env vars, constants
   client.ts             # 1Password SDK client singleton
   utils.ts              # Result helpers, password generation
-  tools/                # MCP tool handlers
-    index.ts
-    vault-list.ts
-    item-lookup.ts
-    item-delete.ts
-    password-create.ts
-    password-read.ts
-    password-update.ts
-    password-generate.ts
-    password-generate-memorable.ts
-  prompts/              # MCP prompt definitions
-    index.ts
-  resources/            # MCP resource definitions
-    index.ts
+  tools/                # MCP tool handlers (13) + index.ts barrel
+    vault-list.ts  item-lookup.ts  item-list.ts  item-get.ts
+    item-edit.ts   item-delete.ts  item-archive.ts  note-create.ts
+    password-create.ts  password-read.ts  password-update.ts
+    password-generate.ts  password-generate-memorable.ts
+  prompts/index.ts      # MCP prompt definitions (4)
+  resources/index.ts    # MCP resource definitions (3)
+scripts/bump-version.mjs  # Keep version in sync across the 4 spots
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+For deeper internals see [docs/architecture.md](docs/architecture.md). For the
+canonical operating guide and documentation map, see [AGENTS.md](AGENTS.md).
+Contribution guidelines: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
