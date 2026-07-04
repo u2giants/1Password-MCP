@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-07-04
+
+### Added
+
+- **`item_get` tool** — Retrieve detailed information for a 1Password item, including tags, fields, website URLs, and notes. Concealed field values are hidden unless explicitly revealed. Supports secret references (`op://vault/item/field`) or vault and item IDs.
+- **`item_edit` tool** — Edit an existing 1Password item, updating titles, notes, tags, website URL, and upserting or removing fields.
+- **`item_list` tool** — List all items in a 1Password vault (returns metadata like ID, title, category, tags, and updatedAt).
+- **`item_archive` tool** — Move a 1Password item to the archive instead of permanently deleting it.
+- **`note_create` tool** — Create a Secure Note item with optional custom fields and tags.
+
+### Fixed
+
+- **Tool Schema Documentation Alignment** — Updated parameter and tool descriptions for `item_get` and `note_create` to ensure the correct formats (e.g. `op://vault/item/field` for secret reference) and parameter descriptions (`id or title` for custom fields) are properly surfaced in MCP.
+
 ## [2.4.2] - 2026-04-25
+
+### Fixed
+
+- **`password_update` field matching** — The `password_update` tool now correctly finds the field to update by matching against the field's `id`, `title`, or `label`. Previously, it only matched against `id` and `title`.
 
 ### Changed
 
