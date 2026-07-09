@@ -6,12 +6,12 @@
     "url": "https://github.com/u2giants/1Password-MCP.git",
     "source": "github"
   },
-  "version": "2.5.0",
+  "version": "2.5.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@u2giants/1password-mcp",
-      "version": "2.5.0",
+      "version": "2.5.1",
       "transport": {
         "type": "stdio"
       },
