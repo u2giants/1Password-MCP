@@ -37,4 +37,8 @@ Confirm the branch before editing version/package metadata.
   **no npm token to manage**, and you cannot/should not publish manually.
 - **SSH is not part of this project** — there are no servers to deploy to.
 - Never write secrets (tokens, service account values) into the repo, docs, or
-  workflow files.
+  workflow files. To USE a secret in a command/script/API call, prefer the
+  `op_run` tool (pass `op://` refs in its `env`; it injects them into the child
+  process and redacts them from output) over revealing a secret with
+  `item_get`/`password_read` (`reveal: true`) and pasting it — the latter puts
+  plaintext into the model context/transcript.

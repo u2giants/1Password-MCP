@@ -22,7 +22,8 @@ config object (`src/config.ts`).
 | Config | `src/config.ts` | Resolve CLI flags / env vars / macOS Keychain into a cached `ServerConfig`; expose `SERVER_NAME`, `SERVER_VERSION` |
 | SDK client | `src/client.ts` | Lazily create and cache the authenticated 1Password SDK client |
 | Logger | `src/logger.ts` | Structured logging to **stderr only** (stdout is reserved for MCP) |
-| Tools | `src/tools/*.ts` + `index.ts` | 13 tool handlers; `registerAllTools()` registers each on the server |
+| Tools | `src/tools/*.ts` + `index.ts` | 15 tool handlers; `registerAllTools()` registers each on the server. Includes `op_run` (spawns a child process with `op://` refs resolved into its env) and `op_check_ref` (resolves a ref to metadata only). |
+| Secret refs | `src/secret-ref.ts` | `isSecretRef` / `parseSecretRef` / `assertVaultAllowed` — shared `op://vault/item/field` parsing + vault allow-list guard used by `op_run` and `op_check_ref` |
 | Prompts | `src/prompts/index.ts` | 4 guided prompts (`registerAllPrompts()`) |
 | Resources | `src/resources/index.ts` | 3 browsable resources (`registerAllResources()`) |
 | Utils | `src/utils.ts` | `errorResult()` and other result helpers; cryptographically secure password generation |
@@ -51,10 +52,17 @@ result (errorResult() on failure, isError flag set) ──► back over stdio
 
 - **stdout is sacred.** Only MCP protocol bytes may go to stdout. All diagnostics
   go to stderr via `src/logger.ts`. A stray `console.log` breaks clients.
-- **Secrets are plaintext in transit.** Values retrieved/created flow through the
-  MCP channel to the model. There is no end-to-end encryption inside MCP; data is
-  encrypted only once stored in 1Password. Intended for disposable/automation
-  secrets, not high-stakes credentials. (See README "Security & Privacy".)
+- **Secrets are plaintext in transit *for retrieval tools*.** Values returned by
+  `item_get`/`password_read` (with `reveal`) flow through the MCP channel to the
+  model. There is no end-to-end encryption inside MCP; data is encrypted only once
+  stored in 1Password. Intended for disposable/automation secrets, not high-stakes
+  credentials. (See README "Security & Privacy".)
+- **`op_run` is the "use without revealing" path.** To USE a secret in a command/
+  API call, `op_run` resolves `op://` refs into a child process's env and REDACTS
+  every resolved value out of stdout/stderr/errors, so plaintext never returns to
+  the model — the safer alternative to revealing then pasting. `reveal` on the
+  retrieval tools defaults to `false`. Ref resolution for `op_run`/`op_check_ref`
+  is constrained to `OP_MCP_ALLOWED_VAULTS` (default `vibe_coding`).
 - **Strict TypeScript, no `any`.** Errors are returned via `errorResult()` with
   the MCP `isError: true` flag, never thrown across the protocol boundary.
 - **Stateless and idempotent startup.** Config and client are cached but
@@ -62,10 +70,10 @@ result (errorResult() on failure, isError flag set) ──► back over stdio
 
 ## Capabilities at a glance
 
-- **13 tools:** `vault_list`, `item_lookup`, `item_list`, `item_get`,
+- **15 tools:** `vault_list`, `item_lookup`, `item_list`, `item_get`,
   `item_edit`, `item_delete`, `item_archive`, `note_create`, `password_create`,
   `password_read`, `password_update`, `password_generate`,
-  `password_generate_memorable`.
+  `password_generate_memorable`, `op_run`, `op_check_ref`.
 - **4 prompts:** `generate-secure-password`, `credential-rotation`,
   `vault-audit`, `secret-reference-helper`.
 - **3 resources:** `1password://config`, `1password://vaults`,
