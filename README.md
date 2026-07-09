@@ -15,7 +15,7 @@ A community-built [Model Context Protocol (MCP)](https://modelcontextprotocol.io
 
 ## Features
 
-### Tools (13)
+### Tools (15)
 
 | Tool | Description |
 |------|-------------|
@@ -28,10 +28,14 @@ A community-built [Model Context Protocol (MCP)](https://modelcontextprotocol.io
 | `item_archive` | Archive an item (move to archive instead of permanently deleting) |
 | `note_create` | Create a Secure Note item with optional tags and custom fields |
 | `password_create` | Create a new password/login item |
-| `password_read` | Retrieve a password via secret reference (`op://vault/item/field`) or vault/item ID |
+| `password_read` | Retrieve a password via secret reference (`op://vault/item/field`) or vault/item ID; metadata-only unless `reveal` is true |
 | `password_update` | Rotate/update an existing password |
 | `password_generate` | Generate a cryptographically secure random password |
 | `password_generate_memorable` | Generate a memorable passphrase from ~500 dictionary words |
+| `op_run` | **Use a secret without revealing it.** Runs a local command with `op://vault/item/field` references resolved into env vars; the plaintext never returns to the caller — resolved values are redacted from stdout/stderr. Replaces `op run` from the 1Password CLI. |
+| `op_check_ref` | Validate an `op://vault/item/field` reference and return metadata (vault, item, field) confirming it resolves — never the value |
+
+**Using secrets safely:** to run a command, script, or API call that needs a real secret, prefer `op_run` with an `op://` reference in its `env` map over reading the secret with `password_read`/`item_get` (`reveal: true`) and pasting it into a command — the latter puts plaintext into the model's context and transcript. `op_run` resolves the reference and injects it directly into the child process environment, then redacts it from any returned output.
 
 ### Prompts (4)
 

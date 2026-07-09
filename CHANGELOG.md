@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-07-08
+
+### Added
+
+- **`op_run` tool** — execute a local command with `op://vault/item/field`
+  secret references resolved into environment variables, without the
+  plaintext ever being returned to the caller/model. This is the MCP
+  equivalent of `op run -- <command>`: the resolved secret exists only in
+  the child process's environment and server memory; every resolved value
+  is redacted (`«REDACTED:ENV_NAME»`) from `stdout`/`stderr`/error messages
+  before the result is returned, and is never logged. Supports `command`
+  (shell) or `argv` (direct exec, no shell), `cwd`, mixed literal/`op://`
+  `env` values, `timeout_ms`, and `stdin`.
+- **`op_check_ref` tool** — validate an `op://vault/item/field` reference
+  and return only non-secret metadata (vault, item title, field label/type)
+  confirming it resolves. Lets an agent sanity-check a reference before
+  passing it to `op_run` without ever seeing the value.
+- **`OP_MCP_ALLOWED_VAULTS`** env var / `--allowed-vaults` flag — restricts
+  which vaults `op_run`/`op_check_ref` may resolve `op://` references from
+  (default: `vibe_coding`, matching the owner's existing vault convention).
+
+### Changed
+
+- **`password_read` and `item_get` now default `reveal` to `false`.**
+  Previously `password_read` defaulted to revealing the plaintext value;
+  both tools now return metadata only unless the caller explicitly passes
+  `reveal: true`. Tool descriptions now point agents at `op_run` as the
+  preferred way to use a secret in a command without exposing it in the
+  model's context/transcript.
+
 ## [2.4.3] - 2026-06-22
 
 ### Changed

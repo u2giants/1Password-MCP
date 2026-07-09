@@ -17,8 +17,12 @@ Desktop, Claude Code, VS Code Copilot, OpenAI Codex, Gemini, etc.) launch it as 
 - **Who uses it:** developers/automation that need disposable or service-account
   credentials (dev DB creds, bot tokens, CI secrets) surfaced to an AI client.
 - **Key moving parts:** the MCP server (`src/`), the 1Password SDK client
-  (`src/client.ts`), 13 tools / 4 prompts / 3 resources, and a GitHub Actions
-  release pipeline that publishes to npm via OIDC.
+  (`src/client.ts`), 15 tools / 4 prompts / 3 resources, and a GitHub Actions
+  release pipeline that publishes to npm via OIDC. Two of the tools —
+  `op_run` and `op_check_ref` — let an agent USE a secret (inject it into a
+  child process's environment, or validate a reference) without the
+  plaintext ever entering the model's context/transcript; see
+  `src/secret-ref.ts` and `src/tools/op-run.ts`.
 - **Outcome that matters:** `npx -y @u2giants/1password-mcp` Just Works for the
   end user, and publishing a new version never requires a hand-managed npm token.
 
@@ -261,6 +265,7 @@ by this project, and not in CI. All are read in `src/config.ts`.
 | `MCP_DEBUG` | If set, defaults log level to `debug` | User env | no | no |
 | `OP_INTEGRATION_NAME` | Integration name reported to the 1Password SDK (default `1password-mcp`) | User env | no | no |
 | `OP_INTEGRATION_VERSION` | Integration version reported to the SDK (default `SERVER_VERSION`) | User env | no | no |
+| `OP_MCP_ALLOWED_VAULTS` | Comma-separated vault allow-list for `op_run`/`op_check_ref` (default `vibe_coding`) | User env | no | no |
 
 Equivalent CLI flags (override env): `--service-account-token` / `--token`,
 `--log-level`, `--integration-name`, `--integration-version`. Token precedence:
@@ -269,9 +274,11 @@ CLI flag → `OP_SERVICE_ACCOUNT_TOKEN` → macOS Keychain.
 **Vault convention (u2giants):** store and read all automation secrets in the
 **`vibe_coding`** 1Password vault — the only vault the shared service account can
 read. Reference them as `op://vibe_coding/<item>/<field>`. (The deprecated npm
-publish token lived at `op://vibe_coding/npm-publish-token`.) This is the owner's
-operating convention, not a constraint of the server itself, which works with any
-vault the token can access.
+publish token lived at `op://vibe_coding/npm-publish-token`.) Most tools work with
+any vault the token can access; `op_run` and `op_check_ref` additionally enforce
+this convention at runtime via `OP_MCP_ALLOWED_VAULTS` (default `vibe_coding`) —
+an `op://` reference to a vault outside the allow-list is rejected before it is
+resolved.
 
 **CI publishing uses no secret at all** — the release workflow authenticates to
 npm via OIDC (Trusted Publishing). See [Deployment](#deployment).

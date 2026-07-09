@@ -49,8 +49,8 @@ describe("MCP Tools", () => {
     registerAllTools(server);
   });
 
-  it("registers all 13 tools", () => {
-    expect(registeredTools.size).toBe(13);
+  it("registers all 15 tools", () => {
+    expect(registeredTools.size).toBe(15);
     expect(registeredTools.has("vault_list")).toBe(true);
     expect(registeredTools.has("item_lookup")).toBe(true);
     expect(registeredTools.has("item_delete")).toBe(true);
@@ -64,6 +64,8 @@ describe("MCP Tools", () => {
     expect(registeredTools.has("password_update")).toBe(true);
     expect(registeredTools.has("password_generate")).toBe(true);
     expect(registeredTools.has("password_generate_memorable")).toBe(true);
+    expect(registeredTools.has("op_run")).toBe(true);
+    expect(registeredTools.has("op_check_ref")).toBe(true);
   });
 
   it("all tools have descriptions", () => {
@@ -205,10 +207,28 @@ describe("MCP Tools", () => {
       const handler = registeredTools.get("password_read")!.handler;
       const result = await handler({
         secretReference: "op://vault/item/password",
+        reveal: true,
       });
       const data = JSON.parse(result.content[0].text);
 
       expect(data.value).toBe("my-secret-value");
+    });
+
+    it("defaults to metadata-only (no reveal) when reveal is omitted", async () => {
+      mockedGetClient.mockResolvedValue({
+        secrets: {
+          resolve: vi.fn().mockResolvedValue("my-secret-value"),
+        },
+      } as any);
+
+      const handler = registeredTools.get("password_read")!.handler;
+      const result = await handler({
+        secretReference: "op://vault/item/password",
+      });
+      const data = JSON.parse(result.content[0].text);
+
+      expect(data.resolved).toBe(true);
+      expect(data.value).toBeUndefined();
     });
 
     it("returns metadata only when reveal is false", async () => {

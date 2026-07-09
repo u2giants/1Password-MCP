@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { LOG_LEVEL_VALUES, type LogLevel } from "./types.js";
 
 export const SERVER_NAME = "1password-mcp";
-export const SERVER_VERSION = "2.4.3";
+export const SERVER_VERSION = "2.5.0";
 
 /** Parse a `--flag value` or `--flag=value` argument from process.argv. */
 function getArgValue(name: string): string | undefined {
@@ -33,6 +33,20 @@ export interface ServerConfig {
   serviceAccountToken: string | undefined;
   /** Where the token came from. */
   tokenSource: "args" | "env" | "keychain" | "missing";
+  /** Vault names that `op_run`/`op_check_ref` are permitted to resolve secret references from. */
+  allowedVaults: string[];
+}
+
+/** Default vault allow-list for op:// reference resolution (the owner's operating convention). */
+export const DEFAULT_ALLOWED_VAULTS = ["vibe_coding"];
+
+/** Parse a comma-separated vault allow-list; falls back to the default when unset/blank. */
+export function parseAllowedVaults(raw: string | undefined): string[] {
+  if (!raw || !raw.trim()) return [...DEFAULT_ALLOWED_VAULTS];
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 let _config: ServerConfig | undefined;
@@ -129,6 +143,10 @@ export function getConfig(): ServerConfig {
   const { serviceAccountToken, tokenSource } =
     resolveServiceAccountToken({ tokenFromArgs });
 
+  const allowedVaults = parseAllowedVaults(
+    getArgValue("allowed-vaults") ?? process.env.OP_MCP_ALLOWED_VAULTS,
+  );
+
   _config = {
     logLevel: logLevelRaw,
     logLevelValue,
@@ -136,6 +154,7 @@ export function getConfig(): ServerConfig {
     integrationVersion,
     serviceAccountToken,
     tokenSource,
+    allowedVaults,
   };
 
   return _config;

@@ -19,6 +19,7 @@ user's MCP client. Nothing here is a secret committed to the repo.
 | `MCP_DEBUG` | If set (any value), forces log level to `debug` | unset | Convenience switch; `MCP_LOG_LEVEL` and `--log-level` take precedence. |
 | `OP_INTEGRATION_NAME` | Integration name reported to the 1Password SDK | `1password-mcp` | Appears in 1Password access logs. |
 | `OP_INTEGRATION_VERSION` | Integration version reported to the SDK | `SERVER_VERSION` | Defaults to the running server version. |
+| `OP_MCP_ALLOWED_VAULTS` | Comma-separated vault names/IDs that `op_run` and `op_check_ref` may resolve `op://` references from | `vibe_coding` | Guards secret-injecting tools separately from read tools; a reference to any other vault is rejected before it is resolved. |
 
 ## CLI flags
 
@@ -31,6 +32,7 @@ or `--flag=value`.
 | `--log-level <level>` | `MCP_LOG_LEVEL` / `MCP_DEBUG` | `error` \| `warn` \| `info` \| `debug` |
 | `--integration-name <name>` | `OP_INTEGRATION_NAME` | Custom SDK integration name |
 | `--integration-version <version>` | `OP_INTEGRATION_VERSION` | Custom SDK integration version |
+| `--allowed-vaults <list>` | `OP_MCP_ALLOWED_VAULTS` | Comma-separated vault allow-list for `op_run`/`op_check_ref` |
 
 ## Token resolution order
 
