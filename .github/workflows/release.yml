@@ -40,10 +40,12 @@ jobs:
           cache: npm
 
       # Trusted Publishing requires npm >= 11.5.0. The Node 20 runner ships an
-      # older npm, so upgrade the global npm before publishing.
+      # older npm, so upgrade the global npm before publishing. Pin to npm 11.x:
+      # `npm@latest` is now npm 12, which requires Node >= 22.22 and fails on the
+      # Node 20 runner (EBADENGINE). npm 11.x is >= 11.5.0 AND Node-20 compatible.
       - name: Upgrade npm (Trusted Publishing needs npm >= 11.5.0)
         run: |
-          npm install -g npm@latest
+          npm install -g npm@11
           npm --version
 
       - name: Install dependencies
