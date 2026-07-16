@@ -53,11 +53,13 @@ output redaction works (`«REDACTED:NAME»`). See `fix.md` §1 for the proof.
 
 ## 6. The plan
 
-**[`fix.md`](fix.md)** — 7 agreed work items, in priority order: (1) stable `shell` enum, (2) WSL
-detect + warn + opt-in `forward_env_to_wsl`, (3) result metadata, (4) friendlier ENOENT, (5) tool
-description, (6) server `instructions`, (7) redaction docs + edge tests. It also lists **Non-goals**
-(contested ideas deliberately excluded: PowerShell-as-default, hard-refusing WSL, counts-not-names,
-encoding-aware redaction) and a live smoke-test plan.
+**[`fix.md`](fix.md)** — 8 agreed work items (converged over two review rounds), in priority order:
+(1) stable `shell` enum, (2) **fail-before-execution** on WSL + resolved secrets with
+`forwardEnvToWsl` / `allowMissingSecretsInWsl` overrides, (3) result metadata (names + requested/
+resolved secret counts + platform), (4) friendlier ENOENT, (5) tool description, (6) server
+`instructions` (+ mirror in tool description), (7) redaction docs + edge tests, (8) `machine-atlas.md`
+note + pre-blame methodology. It also lists **Non-goals** (deliberately excluded: PowerShell-as-
+default, *blanket* WSL refusal, counts-*instead-of*-names, encoding-aware redaction) and a smoke plan.
 
 ## 7. What we tried that did NOT work (don't repeat)
 

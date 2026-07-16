@@ -38,25 +38,32 @@ changes below remove every leg of that trap.
 
 ## 2. Scope
 
-**In (agreed by both reviewers):**
+**In (agreed by both reviewers after two rounds):**
 1. Stable, unambiguous `shell` selection (kill the bare-`bash`→WSL trap).
-2. WSL detection → loud `warning` + **explicit opt-in** forwarding (never silent).
+2. WSL + resolved secrets → **fail before execution** with explicit overrides (`forwardEnvToWsl` /
+   `allowMissingSecretsInWsl`); never silently forward, never run de-authenticated by accident.
 3. Diagnostic metadata in every result.
 4. Friendlier spawn/`ENOENT` errors.
 5. Tighten the `op_run` tool description.
-6. Add a server-level `instructions` block (currently none).
+6. Add a server-level `instructions` block (currently none) — high priority — **and** mirror the
+   rules in the tool description (other MCP clients may not surface server instructions).
 7. Redaction: document the contract, add edge tests, frame it honestly.
+8. Add the machine-specific WSL warning to `machine-atlas.md`, and adopt the pre-blame methodology
+   principle (establish platform / executable / shell / cwd / env-boundary before blaming a tool).
 
 **Out (contested — see §11 Non-goals):** switching the default `command` shell to PowerShell;
-hard-refusing WSL+secrets; returning env-var counts instead of names; building encoding-aware
-redaction.
+a *blanket* refusal of all WSL runs; returning env-var counts *instead of* names; building
+encoding-aware redaction.
 
 ---
 
 ## 3. Work item 1 — Stable `shell` selection (highest priority)
 
-**Why:** `shell` resolving a bare name via PATH is the direct cause of the WSL trap. Codex's fix
-(stable identifiers mapped to resolved absolute paths) is the correct one.
+**Why:** `shell` **is** honored today (verified: `command:"pwd"`, `shell:"bash"` → `/mnt/c/…`, i.e.
+WSL bash ran; `command:'echo "P=[$PLAIN]"'`, `shell:"bash"` → `P=[]`, empty not literal, proving a
+POSIX shell ran). The defect is that a bare name like `bash` **resolves via PATH to WSL bash** — a
+disambiguation problem, not a missing feature. The fix is stable identifiers mapped to resolved
+absolute paths so `bash` can never silently mean WSL.
 
 **File:** `src/tools/op-run.ts` (schema ~L100–105; spawn ~L161–175).
 
@@ -82,30 +89,40 @@ redaction.
 
 ---
 
-## 4. Work item 2 — WSL detection, warning, and opt-in forwarding
+## 4. Work item 2 — WSL detection: fail **before** execution, with explicit overrides
 
-**Why:** both reviewers agree: detect WSL, warn loudly, and **never silently forward secrets** into
-the distro. (We intentionally warn rather than hard-refuse — see Non-goals — because a plain WSL run
-leaks nothing: the secret is simply *absent* inside WSL.)
+**Why:** both reviewers agree: detect WSL and **never silently forward secrets** into the distro.
+Codex convinced Claude of one refinement over an execute-then-warn design: a warning returned *after*
+the run is too late — the command **already ran without its secret** and may have caused unintended
+side effects (a request that silently hit an endpoint unauthenticated, a partial/destructive action).
+So when WSL + resolved secret refs are detected, **fail fast before spawning**, unless the caller
+explicitly opts in. This is a *usability guardrail*, not a leak claim — a non-forwarding WSL run
+leaks nothing (the secret is simply absent); the risk is running de-authenticated by accident.
 
 **File:** `src/tools/op-run.ts`.
 
 **Change:**
 - Detect a WSL target when: `shell` token is `wsl`; **or** `argv[0]` basename ∈ {`wsl`,`wsl.exe`};
   **or** the resolved executable path is `…\System32\bash.exe` or `…\System32\wsl.exe`.
-- New optional param **`forward_env_to_wsl: boolean`** (default `false`).
-- When a WSL target is detected **and** `env` was supplied **and** `forward_env_to_wsl` is not set:
-  add a `warning` string to the result:
-  > "Target is WSL. Injected environment variables (including resolved secrets) are NOT visible
-  > inside WSL unless forwarded. Set `forward_env_to_wsl: true` to forward via WSLENV, or use a
-  > native shell (`cmd`/`powershell`/`git-bash`)."
-- When `forward_env_to_wsl: true` **and** WSL target: append each injected var name to `WSLENV`
-  (e.g. `NAME/u`) on the child env, preserving any existing `WSLENV`. Emit a `warning` that this
-  **widens the secret's exposure into the WSL distro** (visible to processes/tooling there).
-- Never modify `WSLENV` implicitly.
+- Two new optional params (both default `false`):
+  - **`forwardEnvToWsl: boolean`** — forward injected vars into WSL.
+  - **`allowMissingSecretsInWsl: boolean`** — run anyway, accepting that vars won't cross.
+- When a WSL target is detected **and** the `env` map contains any **resolved secret ref**
+  (`op://…`) **and** neither override is set: **return a structured error before spawning** —
+  > "Refusing to run: target is WSL and resolved 1Password secret(s) would NOT be visible inside
+  > WSL (Windows env does not cross the WSL boundary), so the command would run de-authenticated.
+  > Set `forwardEnvToWsl: true` to forward via WSLENV (widens the secret's exposure into the
+  > distro), `allowMissingSecretsInWsl: true` to run anyway, or use a native shell
+  > (`cmd`/`powershell`/`git-bash`)."
+- When `forwardEnvToWsl: true` **and** WSL target: append each injected var name to `WSLENV`
+  (e.g. `NAME/u`) on the child env, preserving any existing `WSLENV`. Add a result `warning` that
+  this **widens the secret's exposure into the WSL distro**.
+- WSL target with only non-secret `env` (or no `env`): allowed; add an informational `warning` that
+  vars won't cross. Never modify `WSLENV` implicitly.
 
-**Tests:** WSL detected + env + no opt-in → `warning` present, `WSLENV` untouched; opt-in →
-`WSLENV` contains the names + exposure `warning`; native shell → no WSL warning.
+**Tests:** WSL + secret ref + no override → pre-spawn error, nothing ran; `+ allowMissingSecretsInWsl`
+→ runs, vars absent, `warning` present; `+ forwardEnvToWsl` → `WSLENV` contains names + exposure
+`warning`; WSL + non-secret env → runs with informational warning; native shell → no WSL error/warning.
 
 ---
 
@@ -116,18 +133,24 @@ leaks nothing: the secret is simply *absent* inside WSL.)
 **File:** `src/tools/op-run.ts` — extend the `jsonResult({...})` at ~L232–241.
 
 **Add fields:**
-- `mode`: `"argv" | "command"`
-- `shell`: resolved shell path used (command mode) or `null` (argv mode)
+- `executionMode`: `"shell" | "direct"` (command vs argv)
+- `shellUsed`: resolved shell path used (command mode) or `null` (argv mode)
 - `executable`: `argv[0]` (argv mode) or `null`
+- `platform`: `process.platform`
 - `wsl`: boolean (WSL target detected)
-- `injectedEnv`: `resolvedEnv.map(e => ({ name: e.name, secret: e.secret }))` — **names + secret
-  flag, never values.** (We return names, not counts — see Non-goals; names are caller-chosen and
-  are what a caller needs to self-verify "did `K` get injected?")
+- `injectedEnvNames`: `resolvedEnv.map(e => e.name)` — **names only, never values/refs/paths.**
+  (Names, not counts: names are caller-chosen and are what a caller needs to self-verify "did `K`
+  get injected?" — a bare count can't tell you *which* var failed.)
+- `requestedSecretCount` / `resolvedSecretCount`: how many `op://` refs were requested vs.
+  successfully resolved, so **partial resolution is obvious**.
 - keep existing: `exitCode, signal, timedOut, stdout, stderr, stdoutTruncated, stderrTruncated,
   durationMs`.
+- **Document:** callers must not encode sensitive information in variable *names* (names are
+  returned in diagnostics); never return references, item/field paths, or values.
 
-**Tests:** metadata reflects mode/shell/executable/injectedEnv for both a `command` and an `argv`
-run; values never appear in `injectedEnv`.
+**Tests:** metadata reflects executionMode/shellUsed/executable/platform/injectedEnvNames for both a
+`command` and an `argv` run; secret values never appear anywhere in the result;
+requested vs resolved counts differ when a ref fails to resolve.
 
 ---
 
@@ -232,11 +255,14 @@ across stdout, stderr, the spawn-error message, and the catch-path error. Output
 - **Default `command` shell → PowerShell.** Rejected: PowerShell has profile/startup surprises and
   different quoting; switching the default is a breaking behavior change. Keep cmd default; make
   `shell` explicit and documented instead.
-- **Hard-refuse WSL + secrets.** Rejected as default: a plain (non-forwarding) WSL run leaks nothing
-  — the secret is simply absent — so this is a *usability* issue, not a security exposure. Warn +
-  opt-in forwarding (item #2) is the right treatment; a hard refuse would block valid workflows.
-- **Return env-var counts instead of names.** Rejected: names are caller-chosen (not secret) and are
-  exactly what's needed to self-verify injection; counts can't tell you *which* var failed.
+- **Blanket refusal of all WSL runs.** Rejected: a non-forwarding WSL run leaks nothing (the secret
+  is simply absent), so refusing *every* WSL run would block valid workflows. The agreed treatment
+  (item #2) is narrower: fail before execution **only** when WSL + a *resolved secret ref* are
+  combined (to avoid running de-authenticated by accident), always overridable. WSL with non-secret
+  env just warns and runs.
+- **Return env-var counts *instead of* names.** Rejected: names are caller-chosen (not secret) and
+  are exactly what's needed to self-verify injection; counts can't tell you *which* var failed. (We
+  do *also* return requested/resolved secret **counts** so partial resolution is visible — item #3.)
 - **Encoding-aware redaction (Base64/URL/JSON).** Rejected as gold-plating for a single-user tool;
   document the gap instead (item #9).
 
@@ -250,10 +276,11 @@ across stdout, stderr, the spawn-error message, and the catch-path error. Output
   - `command:"echo [%K%]"`, `env {K:"op://vibe_coding/…/credential"}` → `[«REDACTED:K»]`.
   - `argv:["powershell","-NoProfile","-Command","$env:K.Length"]`, same `env` → the resolved length,
     not 0.
-  - `shell:"wsl"` (or bare `bash` on Windows) + `env` → `warning` present; with
-    `forward_env_to_wsl:true` → var visible inside WSL and exposure `warning` present.
+  - `shell:"wsl"` (or bare `bash` on Windows) + `env {K:"op://…"}` → **pre-spawn error** (nothing
+    ran); `+ allowMissingSecretsInWsl:true` → runs, `$K` empty, informational `warning`;
+    `+ forwardEnvToWsl:true` → var visible inside WSL and exposure `warning` present.
   - `argv:["not-a-real-exe"]` → friendly ENOENT guidance.
-- Confirm no secret value ever appears in `stdout`/`stderr`/`injectedEnv`/error text.
+- Confirm no secret value ever appears in `stdout`/`stderr`/`injectedEnvNames`/error text.
 
 ---
 
