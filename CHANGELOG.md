@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-07-16
+
+### Added
+
+- Stable `op_run` shell tokens (`cmd`, `powershell`, `pwsh`, `git-bash`, `wsl`;
+  plus `sh`/`bash` outside Windows) resolved to absolute executable paths, while
+  preserving absolute-path shells and the existing platform default.
+- Pre-execution WSL guard for resolved secrets, with explicit
+  `forwardEnvToWsl` and `allowMissingSecretsInWsl` overrides. Forwarding appends
+  injected names to the child `WSLENV`; it is never enabled implicitly.
+- Safe result diagnostics describing execution mode, resolved shell/executable,
+  platform, WSL detection, injected variable names, and requested/resolved
+  secret counts.
+- Server-level MCP instructions covering safe `op_run` usage and Windows/WSL
+  boundaries.
+- Redaction edge-case coverage for literal metacharacters, stderr, empty values,
+  error paths, and overlapping secret values.
+
+### Changed
+
+- Windows rejects PATH-ambiguous bare `bash`/`sh` instead of silently selecting
+  WSL; Git Bash is discovered from validated PATH/install locations and fails
+  with clear guidance when unavailable.
+- `argv` ENOENT errors now explain that direct execution has no shell, builtins,
+  or variable expansion without claiming that every missing executable is a
+  builtin.
+- `op_run` descriptions and documentation now distinguish direct and shell
+  execution and define redaction as transcript-output protection, including its
+  encoding/file/network/process limitations.
+
 ## [2.5.1] - 2026-07-08
 
 ### Added

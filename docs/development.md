@@ -64,6 +64,10 @@ on stdin. Two practical ways to exercise it:
   `src/logger.ts`.
 - Startup logs include `tokenSource` (`args`/`env`/`keychain`/`missing`), which is
   the fastest way to confirm the token was picked up.
+- Before blaming a tool for an execution failure, establish the actual platform,
+  resolved executable, shell, working directory, and environment boundary. This
+  is especially important on Windows, where a bare `bash` can mean WSL rather
+  than Git Bash and WSL does not inherit the Windows child environment.
 
 ## Adding a tool (quick recipe)
 

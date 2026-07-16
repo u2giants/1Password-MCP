@@ -58,11 +58,21 @@ result (errorResult() on failure, isError flag set) ──► back over stdio
   stored in 1Password. Intended for disposable/automation secrets, not high-stakes
   credentials. (See README "Security & Privacy".)
 - **`op_run` is the "use without revealing" path.** To USE a secret in a command/
-  API call, `op_run` resolves `op://` refs into a child process's env and REDACTS
-  every resolved value out of stdout/stderr/errors, so plaintext never returns to
-  the model — the safer alternative to revealing then pasting. `reveal` on the
-  retrieval tools defaults to `false`. Ref resolution for `op_run`/`op_check_ref`
-  is constrained to `OP_MCP_ALLOWED_VAULTS` (default `vibe_coding`).
+  API call, `op_run` resolves `op://` refs found in `env` values into a child
+  process's environment. It literally replaces every non-empty resolved value
+  with `«REDACTED:NAME»` in fully buffered stdout, stderr, and returned error
+  text; buffering before redaction also covers values split across stream chunks.
+  Plain env values are not redacted. This is transcript-output protection, not a
+  leak guarantee: transformed encodings, files, network traffic, process args,
+  child processes, and OS process listings are outside the contract. Ref
+  resolution for `op_run`/`op_check_ref` is constrained to
+  `OP_MCP_ALLOWED_VAULTS` (default `vibe_coding`).
+- **Execution boundaries are explicit.** `op_run`'s `argv` form directly spawns
+  a real executable with no shell expansion; `command` uses an explicitly
+  resolved shell (or the unchanged platform default). On Windows, ambiguous bare
+  `bash`/`sh` is rejected. WSL targets with resolved secrets fail before spawn
+  unless the caller explicitly forwards names through `WSLENV` or accepts that
+  the values will be absent. `WSLENV` is never modified implicitly.
 - **Strict TypeScript, no `any`.** Errors are returned via `errorResult()` with
   the MCP `isError: true` flag, never thrown across the protocol boundary.
 - **Stateless and idempotent startup.** Config and client are cached but

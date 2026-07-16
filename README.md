@@ -32,10 +32,19 @@ A community-built [Model Context Protocol (MCP)](https://modelcontextprotocol.io
 | `password_update` | Rotate/update an existing password |
 | `password_generate` | Generate a cryptographically secure random password |
 | `password_generate_memorable` | Generate a memorable passphrase from ~500 dictionary words |
-| `op_run` | **Use a secret without revealing it.** Runs a local command with `op://vault/item/field` references resolved into env vars; the plaintext never returns to the caller — resolved values are redacted from stdout/stderr. Replaces `op run` from the 1Password CLI. |
+| `op_run` | **Use a secret without revealing it.** Resolves `op://vault/item/field` references in environment variables, runs a local process, redacts resolved values from returned output/errors, and reports safe execution diagnostics. Replaces `op run` from the 1Password CLI. |
 | `op_check_ref` | Validate an `op://vault/item/field` reference and return metadata (vault, item, field) confirming it resolves — never the value |
 
-**Using secrets safely:** to run a command, script, or API call that needs a real secret, prefer `op_run` with an `op://` reference in its `env` map over reading the secret with `password_read`/`item_get` (`reveal: true`) and pasting it into a command — the latter puts plaintext into the model's context and transcript. `op_run` resolves the reference and injects it directly into the child process environment, then redacts it from any returned output.
+**Using secrets safely:** to run a command, script, or API call that needs a real secret, prefer `op_run` with an `op://` reference in its `env` map over reading the secret with `password_read`/`item_get` (`reveal: true`) and pasting it into a command. Put references in `env` values only: references in `command` or `argv` text are not resolved, and command lines may be visible outside MCP.
+
+#### `op_run` execution and redaction contract
+
+- `argv` directly spawns `argv[0]` with no shell, shell builtins, quoting expansion, or `$VAR`/`%VAR%` expansion. `command` runs through the selected shell. Windows keeps its existing `cmd.exe` default (`%VAR%`); select `powershell` for `$env:VAR`.
+- `shell` accepts `cmd`, `powershell`, `pwsh`, `git-bash`, `wsl`, or an absolute path. `sh`/`bash` tokens are supported only outside Windows. Bare `bash`/`sh` is rejected on Windows because PATH can silently select WSL.
+- WSL does not inherit the Windows child environment. A WSL target with a resolved secret is refused before execution unless `forwardEnvToWsl: true` explicitly forwards injected names through `WSLENV`, or `allowMissingSecretsInWsl: true` explicitly accepts that the values will be absent. Forwarding widens secret exposure into the distro; `WSLENV` is never changed implicitly.
+- Results report `executionMode`, resolved `shellUsed`, `executable`, `platform`, `wsl`, `injectedEnvNames`, and requested/resolved secret counts. Variable names are returned for diagnosis, so do not encode sensitive information in names. Values, references, and item/field paths are never included in diagnostics.
+- Every non-empty value resolved from an `op://` reference is literally replaced with `«REDACTED:NAME»` in fully buffered stdout, stderr, and returned error text. Buffering occurs before redaction, so a value split across output chunks is still covered. Empty resolved values are skipped. Literal (non-`op://`) env values are not redacted.
+- Redaction is transcript-output protection, not a guarantee that a process cannot disclose a secret. It does not cover transformed forms such as Base64, URL encoding, or JSON escaping, nor writes to files, network traffic, process arguments, child processes, or OS process listings.
 
 ### Prompts (4)
 
