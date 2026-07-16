@@ -18,8 +18,13 @@ This repo is a fork with a deliberate split:
 
 - `main` → package `@u2giants/1password-mcp` (the published fork; default branch).
   **Do release/publishing work here.**
-- `feat/item-get-edit-list` → package `@takescake/1password-mcp` (backs upstream
-  PR #7). **Do not "fix" its package name.**
+- `feat/item-get-edit-list` → package `@takescake/1password-mcp` (historical
+  record of upstream PR #7, now **closed** — its tools were merged upstream via
+  PR #11). **Do not "fix" its package name.**
+
+New upstream contributions are cut from fresh branches off `upstream/master`, not
+this one. Open upstream PRs: **#12** (`op_run`/`op_check_ref`) and **#13**
+(reveal-default hardening) — see AGENTS.md → "Upstream contributions".
 
 Confirm the branch before editing version/package metadata.
 
