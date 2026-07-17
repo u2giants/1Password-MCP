@@ -1,93 +1,117 @@
-# HANDOFF — `op_run` Windows/WSL hardening + diagnostics
+# HANDOFF — `op_run` Windows/WSL hardening
 
-**Repo:** `u2giants/1Password-MCP` (`@u2giants/1password-mcp`, main-only) · **Date:** 2026-07-16
-**Baseline:** v2.5.1 (commit `4500321`) · **Status:** spec written, **no code changed yet**
+**Repo:** `u2giants/1Password-MCP` (`@u2giants/1password-mcp`, main-only) · **Updated:** 2026-07-16
+**Status:** ✅ **v2.6.0 implemented, released to npm, and verified live.** One open defect below.
 
-> Written for a developer with zero prior context on this session. Read this, then the
-> implementation spec: **[`fix.md`](fix.md)** is the authoritative, step-by-step work plan.
+> Written for a developer with zero prior context. The implementation spec is
+> **[`fix.md`](fix.md)** — it is now **fully implemented** (all 8 items) and shipped. This handoff
+> records what shipped, what was proven live, and the one bug that remains.
 
 ---
 
-## 1. What this is / the goal
+## 1. What shipped (v2.6.0)
 
-Harden the `op_run` tool for the Windows/WSL host it runs on and make its behavior self-diagnosing,
-based on a live investigation reviewed by two independent AIs (Claude + Codex/GPT-5.6). The full,
-agreed-upon, prioritized implementation plan — with exact files, line anchors, tests, and a release
-checklist — is in **[`fix.md`](fix.md)**. This handoff is the orientation around it.
+Released via tag `v2.6.0` → commit `be7fe7d` → GitHub Actions → npm Trusted Publishing (OIDC).
+npm `latest` = **2.6.0**. CI ran build + tests green on a clean checkout.
 
-## 2. Why (the triggering incident)
+All 8 `fix.md` items landed: stable shell tokens, WSL fail-before-execution guard, safe execution
+diagnostics, friendlier ENOENT, tightened tool description, server-level `instructions`, documented
++ tested redaction contract. (Item 8's `machine-atlas.md` note was correctly skipped — that file
+lives in another repo. **Still outstanding — see §4.**)
 
-A caller injected a 1Password secret via `op_run`'s `env` map and ran it through `bash` — the value
-arrived empty and the call was **wrongly concluded to be an `op_run` bug**. It is not a bug. Real
-cause: on this host **`bash` = WSL bash**, and WSL does not inherit the Windows process environment
-`op_run` sets (no `WSLENV` forwarding), so injected vars (secrets included) are invisible inside WSL.
-Native children (cmd, PowerShell, node, curl.exe) get the env and resolved secrets correctly, and
-output redaction works (`«REDACTED:NAME»`). See `fix.md` §1 for the proof.
+## 2. Why it exists (the incident)
 
-## 3. Current state
+A caller injected a 1Password secret via `op_run`'s `env` and ran it through `bash`. The value
+arrived empty and this was **wrongly diagnosed as an `op_run` bug**. Real cause: on Windows,
+`bash` resolves via PATH to **WSL bash**, and WSL does not inherit the Windows process environment
+(no `WSLENV` forwarding) — so the secret was invisible inside WSL and the command ran
+de-authenticated. `op_run` was never broken. See `fix.md` §1 for the proof.
 
-- **Nothing in the code has changed.** `op_run` works correctly for native children today.
-- The gaps are: no signal that a run went through WSL, a PATH-ambiguous `shell` param that lets bare
-  `bash` silently mean WSL, thin error messages, no result metadata, no server `instructions` block,
-  and an undocumented redaction contract. All are addressed in `fix.md` (7 work items).
-- Target release: **v2.6.0** (additive + clarifying; no breaking change).
+## 3. Verified live (2026-07-16, on the Windows/WSL host, against the real MCP)
 
-## 4. Where things live (key files)
+| Scenario | Result |
+|---|---|
+| `command:"echo [%K%]"` + `env {K:"op://…"}` | `[«REDACTED:K»]` + full diagnostics ✅ |
+| bare `shell:"bash"` on Windows | **rejected** before resolving the secret (`resolvedSecretCount: 0`) ✅ |
+| `shell:"wsl"` + resolved secret, no override | **refused before spawning** with the guidance message ✅ |
+| `+ allowMissingSecretsInWsl:true` | guard steps aside, correct warning ✅ (but see §4) |
+| `+ forwardEnvToWsl:true` | WSLENV forwarded, exposure warning ✅ (but see §4) |
+| `argv:["not-a-real-exe-xyz"]` | friendly ENOENT explaining argv has no shell ✅ |
 
-- `src/tools/op-run.ts` — the tool. Schema ~L100–117; spawn ~L161–175 (`shell: shell ?? true` at
-  L172 — proves `shell` is honored, the issue is PATH ambiguity); result `jsonResult` ~L232–241;
-  `redact()` L51–61; spawn-error path L177–186 / L219–223.
-- `src/index.ts:18` — `new McpServer(...)`; server `instructions` get added here (item #6).
-- `src/config.ts:9` — `SERVER_VERSION` (one of the four version-bump locations).
-- `server.json` — version appears **twice** (top-level + `packages[0].version`).
-- `package.json` — `"version"` (currently 2.5.1).
-- `tests/op-run.test.ts` — existing op_run tests; new edge tests go here.
-- `PUBLISHING.md` — release-by-tag (Trusted Publishing) process.
+**The original trap is now impossible.** Unit tests: 120/120 green (local + CI).
 
-## 5. How to build / test / release
+---
 
-- Build: `npm run build` (tsc). Test: `npm test` (vitest).
-- Release: bump version in **all four** places (they must match — see `fix.md` §10), update
-  `CHANGELOG.md`, then push the version tag; CI publishes via Trusted Publishing. Do **not**
-  hand-publish. Do **not** touch Codex config.
+## 4. OPEN DEFECT — the `wsl` shell token cannot execute (found by live smoke)
 
-## 6. The plan
+**Symptom:** any `command` run with `shell:"wsl"` fails with:
+```
+Invalid command line argument: -c
+Please use 'wsl.exe --help' to get a list of supported arguments.
+```
+(exit code 4294967295, UTF-16 stdout).
 
-**[`fix.md`](fix.md)** — 8 agreed work items (converged over two review rounds), in priority order:
-(1) stable `shell` enum, (2) **fail-before-execution** on WSL + resolved secrets with
-`forwardEnvToWsl` / `allowMissingSecretsInWsl` overrides, (3) result metadata (names + requested/
-resolved secret counts + platform), (4) friendlier ENOENT, (5) tool description, (6) server
-`instructions` (+ mirror in tool description), (7) redaction docs + edge tests, (8) `machine-atlas.md`
-note + pre-blame methodology. It also lists **Non-goals** (deliberately excluded: PowerShell-as-
-default, *blanket* WSL refusal, counts-*instead-of*-names, encoding-aware redaction) and a smoke plan.
+**Cause:** we hand the resolved `wsl.exe` path to Node's `spawn(command, { shell: <path> })`.
+Node's shell convention appends `-c "<command>"` for non-cmd shells, but **`wsl.exe` does not
+accept `-c`** — it wants `-e <cmd>` or `-- <cmd>`, and needs an actual shell inside the distro.
 
-## 7. What we tried that did NOT work (don't repeat)
+**Blast radius: LOW but real.** The *safety* guard is unaffected and works (the whole point is to
+steer callers away from WSL). What's broken is the **opt-in escape path**: a caller who explicitly
+sets `allowMissingSecretsInWsl` or `forwardEnvToWsl` gets a confusing wsl.exe usage error instead of
+their command running. `git-bash`, `cmd`, `powershell`, `pwsh`, and all `argv` runs are unaffected.
 
-- **Concluding `op_run`'s `env` is broken.** Wrong. It was WSL dropping the env. A single `pwd`
-  (returning `/mnt/c/…`) would have revealed it immediately — always confirm the exec environment
-  before blaming the tool.
-- **`argv:["echo", …]`** → `spawn echo ENOENT`: `argv` is a direct spawn with **no shell**, and
-  `echo` is a cmd builtin, not an executable. Use the `command` form or a real exe.
-- **`op run --env-file <(echo …)`** (process substitution) via Git Bash → native `op.exe` fails on
-  `/proc/<pid>/fd` msys paths. Use a real temp env-file instead.
-- **`codex update` from Git Bash** → failed on an msys `tar` vs `C:` path clash. The official
-  PowerShell installer (`irm https://chatgpt.com/codex/install.ps1 | iex`) run in **native**
-  PowerShell works (this is how Codex was updated 0.142.5 → 0.144.5 to get its review).
+**Why tests missed it:** the vitest suite mocks `spawn`, so it asserts the *arguments* we build, not
+that `wsl.exe` accepts them. Codex never executed anything (its runner couldn't launch a shell), so
+nothing exercised the real binary until the post-release live smoke.
 
-## 8. Gotchas / environment
+**Proposed fix (2.6.1):** special-case the `wsl` token — do **not** route it through Node's `shell`
+option. Build an explicit argv instead, e.g. `wsl.exe -e bash -lc "<command>"` (or `wsl.exe --
+bash -c …`), while preserving the existing guard, WSLENV forwarding, warnings, and diagnostics
+(`executionMode` should stay `"shell"`, `shellUsed` the resolved `wsl.exe`). Add a test that asserts
+the built argv contains no bare `-c` for the wsl token. Ideally add one non-mocked smoke test that
+actually runs a trivial command through each resolvable shell.
 
-- This host's `bash` is **WSL**, not Git Bash. The separate Claude Code "Bash tool" uses **Git
-  Bash** (which *does* inherit Windows env) — a different `bash`. Don't conflate them.
-- `command` form → cmd.exe (`%VAR%`, output has `\r\n`). `argv` form → direct spawn, no expansion.
-- `op://` is only resolved for **values in the `env` map**, never inside command text.
-- Vault allow-list defaults to `vibe_coding` (`src/config.ts:41`).
+**Workaround until fixed:** use `git-bash` for POSIX work, or pass `argv:["wsl.exe","-e","bash","-c","…"]`
+directly (note: `argv` bypasses the WSL guard, so don't combine it with secrets).
 
-## 9. Definition of done / next steps
+## 5. Also outstanding
 
-- [ ] Implement `fix.md` items 1–7 with their tests; `npm run build` + `npm test` green.
-- [ ] Live smoke on this host per `fix.md` §12 (the original scenario now surfaces a `warning` and
-      metadata instead of a silent empty result).
-- [ ] Bump version ×4, update `CHANGELOG.md`, tag-push release (v2.6.0).
-- [ ] Confirm no secret value ever appears in `stdout`/`stderr`/`injectedEnv`/error text.
-- **Open questions** (in `fix.md` §13): does the pinned MCP SDK expose `instructions` on `McpServer`
-  or only the low-level `Server`? How should `git-bash` be discovered when not on PATH?
+- **`machine-atlas.md` note** (`fix.md` item 8): add the "bare `bash` on Windows = WSL; injected env
+  does not cross" warning. That file is **not in this repo** — it lives with the global AI config
+  (`~/.claude/` / the `ai-devops` hub), so it must be added there, not here.
+
+## 6. Where things live
+
+- `src/tools/op-run.ts` — the tool. Shell resolution + WSL guard + diagnostics + `redact()`.
+- `src/instructions.ts` → wired in `src/index.ts` (SDK v1.26.0 supports `instructions` directly).
+- `tests/op-run.test.ts` (29 tests), `tests/instructions.test.ts`.
+- Version lives in **four** places that must match: `package.json`, `server.json` (top-level **and**
+  `packages[0].version`), `src/config.ts` `SERVER_VERSION`. Helper: `node scripts/bump-version.mjs`.
+- `PUBLISHING.md` — release = push a `v*` tag from `main`; Actions publishes via OIDC. No npm token.
+
+## 7. Build / test / release
+
+- `npm run build` (tsc), `npm test` (vitest).
+- Release: bump ×4 → commit → `git tag vX.Y.Z` → `git push origin main --follow-tags`. Then
+  `npm view @u2giants/1password-mcp version` to confirm.
+- Consumers need **no install** — Windows (Claude Desktop MSIX config + `~/.codex/config.toml`) and
+  the Ubuntu VPS `hetz` (`/root/.codex/config.toml`) all launch `npx -y @u2giants/1password-mcp`
+  unpinned, so they pick up `latest` on restart. If npx serves a stale copy, clear the `_npx` cache.
+
+## 8. What we tried that did NOT work (don't repeat)
+
+- **Concluding `op_run`'s `env` was broken.** Wrong — it was WSL dropping the env. One `pwd`
+  (returning `/mnt/c/…`) would have revealed it. **Establish platform / resolved executable / shell /
+  cwd / env-boundary before blaming a tool.**
+- **Claiming `shell` was ignored.** Also wrong — `shell: shell ?? true` honored it; bare `bash` just
+  resolved to WSL. Evidence that settles it: `$PLAIN` expanded to empty (`P=[]`), not literal.
+- **`argv:["echo",…]`** → `spawn echo ENOENT`: argv is a direct spawn, no shell; `echo` is a cmd
+  builtin.
+- **`op run --env-file <(echo …)`** (process substitution) → native `op.exe` fails on `/proc/<pid>/fd`
+  msys paths. Use a real temp env-file.
+- **`codex update` from Git Bash** → msys `tar` vs `C:` path clash. Use the PowerShell installer in
+  **native** PowerShell.
+- **Trusting an exit code as proof of work.** A `nohup … &` inside an already-backgrounded task
+  reported "completed, exit 0" having done nothing. Always verify the working tree.
+- **Trusting green unit tests as proof of behavior.** They mock `spawn`; the `wsl -c` defect in §4
+  survived 120 passing tests and a full CI run.
