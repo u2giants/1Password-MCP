@@ -32,7 +32,7 @@ A community-built [Model Context Protocol (MCP)](https://modelcontextprotocol.io
 | `password_update` | Rotate/update an existing password |
 | `password_generate` | Generate a cryptographically secure random password |
 | `password_generate_memorable` | Generate a memorable passphrase from ~500 dictionary words |
-| `op_run` | **Use a secret without revealing it.** Resolves `op://vault/item/field` references in environment variables, runs a local process, redacts resolved values from returned output/errors, and reports safe execution diagnostics. Replaces `op run` from the 1Password CLI. |
+| `op_run` | **Use secrets without revealing them.** Resolves every `op://vault/item/field` reference in one bulk SDK request, runs a local process, redacts resolved values from returned output/errors, and reports safe execution diagnostics. Replaces `op run` from the 1Password CLI. |
 | `op_check_ref` | Validate an `op://vault/item/field` reference and return metadata (vault, item, field) confirming it resolves — never the value |
 
 **Using secrets safely:** to run a command, script, or API call that needs a real secret, prefer `op_run` with an `op://` reference in its `env` map over reading the secret with `password_read`/`item_get` (`reveal: true`) and pasting it into a command. Put references in `env` values only: references in `command` or `argv` text are not resolved, and command lines may be visible outside MCP.

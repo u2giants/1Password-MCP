@@ -157,10 +157,18 @@ describe("op_run", () => {
     return registeredTools.get("op_run")!.handler;
   }
 
+  function mockBulkResolve(values: Record<string, string>) {
+    const resolveAll = vi.fn().mockImplementation(async (references: string[]) => ({
+      individualResponses: Object.fromEntries(
+        references.map((reference) => [reference, { content: { secret: values[reference] ?? "" } }]),
+      ),
+    }));
+    mockedGetClient.mockResolvedValue({ secrets: { resolveAll } } as any);
+    return resolveAll;
+  }
+
   it("resolves a secret into env while returning safe direct-run diagnostics", async () => {
-    mockedGetClient.mockResolvedValue({
-      secrets: { resolve: vi.fn().mockResolvedValue("my-secret-value") },
-    } as any);
+    mockBulkResolve({ "op://vibe_coding/github/token": "my-secret-value" });
 
     const result = await handler()({
       argv: [node, "-e", "process.exit(process.env.MY_SECRET === 'my-secret-value' ? 0 : 1)"],
@@ -216,9 +224,7 @@ describe("op_run", () => {
 
   it("redacts regex and shell metacharacters from stdout and stderr", async () => {
     const secret = "$a.*[b](c)^&|;`";
-    mockedGetClient.mockResolvedValue({
-      secrets: { resolve: vi.fn().mockResolvedValue(secret) },
-    } as any);
+    mockBulkResolve({ "op://vibe_coding/meta/credential": secret });
 
     const result = await handler()({
       argv: [node, "-e", "process.stdout.write(process.env.K); process.stderr.write(process.env.K)"],
@@ -232,9 +238,7 @@ describe("op_run", () => {
   });
 
   it("skips redaction markers for an empty resolved secret", async () => {
-    mockedGetClient.mockResolvedValue({
-      secrets: { resolve: vi.fn().mockResolvedValue("") },
-    } as any);
+    mockBulkResolve({ "op://vibe_coding/empty/credential": "" });
 
     const result = await handler()({
       argv: [node, "-e", "process.stdout.write('empty=' + process.env.EMPTY)"],
@@ -247,8 +251,10 @@ describe("op_run", () => {
   });
 
   it("redacts overlapping secrets longest-first", async () => {
-    const resolve = vi.fn().mockResolvedValueOnce("abc").mockResolvedValueOnce("abc123");
-    mockedGetClient.mockResolvedValue({ secrets: { resolve } } as any);
+    const resolveAll = mockBulkResolve({
+      "op://vibe_coding/short/credential": "abc",
+      "op://vibe_coding/long/credential": "abc123",
+    });
 
     const result = await handler()({
       argv: [node, "-e", "process.stdout.write(process.env.SHORT + '|' + process.env.LONG)"],
@@ -261,6 +267,11 @@ describe("op_run", () => {
 
     expect(data.stdout).toBe("«REDACTED:SHORT»|«REDACTED:LONG»");
     expect(data.stdout).not.toContain("abc");
+    expect(resolveAll).toHaveBeenCalledOnce();
+    expect(resolveAll).toHaveBeenCalledWith([
+      "op://vibe_coding/short/credential",
+      "op://vibe_coding/long/credential",
+    ]);
   });
 
   it("does not redact literal env pass-through values", async () => {
@@ -275,11 +286,14 @@ describe("op_run", () => {
     expect(data.resolvedSecretCount).toBe(0);
   });
 
-  it("redacts a previously resolved secret from a later resolution error", async () => {
-    const resolve = vi.fn()
-      .mockResolvedValueOnce("partial-secret")
-      .mockRejectedValueOnce(new Error("resolver failed after partial-secret"));
-    mockedGetClient.mockResolvedValue({ secrets: { resolve } } as any);
+  it("keeps successfully resolved values out of a later bulk-resolution error", async () => {
+    const resolveAll = vi.fn().mockResolvedValue({
+      individualResponses: {
+        "op://vibe_coding/first/credential": { content: { secret: "partial-secret" } },
+        "op://vibe_coding/second/credential": { error: { type: "not_found" } },
+      },
+    });
+    mockedGetClient.mockResolvedValue({ secrets: { resolveAll } } as any);
 
     const result = await handler()({
       argv: [node, "-e", "process.exit(0)"],
@@ -291,7 +305,8 @@ describe("op_run", () => {
     const data = parse(result);
 
     expect(result.isError).toBe(true);
-    expect(data.error).toContain("«REDACTED:FIRST»");
+    expect(data.error).toContain("Could not resolve secret reference");
+    expect(data.error).not.toContain("partial-secret");
     expect(JSON.stringify(data)).not.toContain("partial-secret");
     expect(JSON.stringify(data)).not.toContain("op://");
     expect(data.requestedSecretCount).toBe(2);
@@ -300,9 +315,7 @@ describe("op_run", () => {
   });
 
   it("redacts a resolved secret from a spawn error message", async () => {
-    mockedGetClient.mockResolvedValue({
-      secrets: { resolve: vi.fn().mockResolvedValue("spawn-secret") },
-    } as any);
+    mockBulkResolve({ "op://vibe_coding/spawn/credential": "spawn-secret" });
     mockSpawnError("child failed while handling spawn-secret");
 
     const result = await handler()({
@@ -317,9 +330,7 @@ describe("op_run", () => {
   });
 
   it("refuses WSL with a resolved secret before spawning", async () => {
-    mockedGetClient.mockResolvedValue({
-      secrets: { resolve: vi.fn().mockResolvedValue("secret") },
-    } as any);
+    mockBulkResolve({ "op://vibe_coding/api/credential": "secret" });
 
     const result = await handler()({
       argv: ["wsl.exe", "echo", "$K"],
@@ -334,9 +345,7 @@ describe("op_run", () => {
   });
 
   it("detects an absolute System32 bash path as WSL", async () => {
-    mockedGetClient.mockResolvedValue({
-      secrets: { resolve: vi.fn().mockResolvedValue("secret") },
-    } as any);
+    mockBulkResolve({ "op://vibe_coding/api/credential": "secret" });
     const system32Bash = process.platform === "win32"
       ? "C:\\Windows\\System32\\bash.exe"
       : "/Windows/System32/bash.exe";
@@ -353,9 +362,7 @@ describe("op_run", () => {
   });
 
   it("allows missing WSL secrets only with an explicit override and warns", async () => {
-    mockedGetClient.mockResolvedValue({
-      secrets: { resolve: vi.fn().mockResolvedValue("secret") },
-    } as any);
+    mockBulkResolve({ "op://vibe_coding/api/credential": "secret" });
     mockSuccessfulSpawn();
 
     const result = await handler()({
@@ -373,9 +380,7 @@ describe("op_run", () => {
 
   it("forwards names through WSLENV only with explicit opt-in and preserves existing entries", async () => {
     process.env.WSLENV = "EXISTING/u";
-    mockedGetClient.mockResolvedValue({
-      secrets: { resolve: vi.fn().mockResolvedValue("secret") },
-    } as any);
+    mockBulkResolve({ "op://vibe_coding/api/credential": "secret" });
     mockSuccessfulSpawn();
 
     const result = await handler()({
@@ -424,8 +429,8 @@ describe("op_run", () => {
   });
 
   it("rejects an op:// reference outside the vault allow-list without returning the ref", async () => {
-    const resolve = vi.fn();
-    mockedGetClient.mockResolvedValue({ secrets: { resolve } } as any);
+    const resolveAll = vi.fn();
+    mockedGetClient.mockResolvedValue({ secrets: { resolveAll } } as any);
 
     const result = await handler()({
       argv: [node, "-e", "process.exit(0)"],
@@ -436,7 +441,7 @@ describe("op_run", () => {
     expect(result.isError).toBe(true);
     expect(data.error).toContain("not in the allowed vault list");
     expect(JSON.stringify(data)).not.toContain("op://personal");
-    expect(resolve).not.toHaveBeenCalled();
+    expect(resolveAll).not.toHaveBeenCalled();
   });
 
   it("validates command/argv selection", async () => {

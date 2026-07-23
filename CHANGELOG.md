@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-07-23
+
+### Changed
+
+- `op_run` now sends every `op://` environment reference required by one command
+  through the 1Password SDK's single bulk `resolveAll` request, instead of one
+  request per reference. This reduces startup and command-time vault traffic
+  without caching secret values.
+
 ## [2.6.0] - 2026-07-16
 
 ### Added

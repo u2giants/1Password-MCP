@@ -57,8 +57,9 @@ result (errorResult() on failure, isError flag set) ──► back over stdio
   model. There is no end-to-end encryption inside MCP; data is encrypted only once
   stored in 1Password. Intended for disposable/automation secrets, not high-stakes
   credentials. (See README "Security & Privacy".)
-- **`op_run` is the "use without revealing" path.** To USE a secret in a command/
-  API call, `op_run` resolves `op://` refs found in `env` values into a child
+- **`op_run` is the "use without revealing" path.** To USE secrets in a command/
+  API call, `op_run` resolves all `op://` refs found in `env` values in one bulk
+  SDK request, then injects them into a child
   process's environment. It literally replaces every non-empty resolved value
   with `«REDACTED:NAME»` in fully buffered stdout, stderr, and returned error
   text; buffering before redaction also covers values split across stream chunks.

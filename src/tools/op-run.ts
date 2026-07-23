@@ -214,24 +214,35 @@ export function resolveShellSelection(
   return { spawnShell: resolved, shellUsed: resolved, token: token as ShellToken };
 }
 
-/** Resolve the `env` map, retaining successfully resolved entries if a later lookup fails. */
+/** Resolve all secret references in one SDK call, retaining successful earlier entries on a per-ref failure. */
 async function resolveEnvEntries(
   env: Record<string, string> | undefined,
   entries: ResolvedEnvEntry[],
 ): Promise<void> {
   if (!env) return;
-  const hasSecret = Object.values(env).some(isSecretRef);
+  const envEntries = Object.entries(env);
+  const secretReferences = envEntries
+    .map(([, value]) => value)
+    .filter(isSecretRef);
+  const hasSecret = secretReferences.length > 0;
   const client = hasSecret ? await getClient() : undefined;
-  if (hasSecret && !client?.secrets?.resolve) {
+  if (hasSecret && !client?.secrets?.resolveAll) {
     throw new Error("Your @1password/sdk version does not support resolving secrets.");
   }
 
-  for (const [name, rawValue] of Object.entries(env)) {
+  for (const reference of secretReferences) {
+    assertVaultAllowed(parseSecretRef(reference).vault);
+  }
+  const resolved = hasSecret ? await client!.secrets.resolveAll(secretReferences) : undefined;
+
+  for (const [name, rawValue] of envEntries) {
     if (isSecretRef(rawValue)) {
-      const ref = parseSecretRef(rawValue);
-      assertVaultAllowed(ref.vault);
-      const value = await client!.secrets.resolve(rawValue);
-      entries.push({ name, value, secret: true });
+      const response = resolved!.individualResponses[rawValue];
+      if (!response?.content) {
+        const reason = response?.error?.type ?? "unknown";
+        throw new Error(`Could not resolve secret reference '${rawValue}' (${reason}).`);
+      }
+      entries.push({ name, value: response.content.secret, secret: true });
     } else {
       entries.push({ name, value: rawValue, secret: false });
     }
