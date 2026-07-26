@@ -46,6 +46,26 @@ A community-built [Model Context Protocol (MCP)](https://modelcontextprotocol.io
 - Every non-empty value resolved from an `op://` reference is literally replaced with `«REDACTED:NAME»` in fully buffered stdout, stderr, and returned error text. Buffering occurs before redaction, so a value split across output chunks is still covered. Empty resolved values are skipped. Literal (non-`op://`) env values are not redacted.
 - Redaction is transcript-output protection, not a guarantee that a process cannot disclose a secret. It does not cover transformed forms such as Base64, URL encoding, or JSON escaping, nor writes to files, network traffic, process arguments, child processes, or OS process listings.
 
+#### Why `op_run` resolves references in bulk
+
+One `op_run` call can need several credentials—for example, a client ID, client
+secret, API token, and database URL. Resolving them one at a time creates one
+1Password SDK request per environment variable. That is unnecessary traffic and
+can make normal agent work consume request capacity much faster than the actual
+work warrants.
+
+`op_run` therefore collects every `op://` value in its `env` map, validates each
+reference against the configured vault allow-list, and sends the complete list to
+the SDK's `resolveAll` method once. The SDK returns one result per reference;
+only after every requested reference has a successful result does `op_run` start
+the child process. Literal environment values are not sent to 1Password at all.
+
+This is deliberately **not a secret cache**. Values remain only in the MCP
+process and the child process for the duration of that command. A later,
+separate `op_run` invocation reads 1Password again. The optimization reduces
+calls within one command while preserving the current no-persistent-secret
+design.
+
 ### Prompts (4)
 
 | Prompt | Description |

@@ -1,223 +1,103 @@
-# HANDOFF — `op_run` Windows/WSL hardening
+# HANDOFF — 1Password MCP bulk secret resolution and remaining WSL execution defect
 
-**Repo:** `u2giants/1Password-MCP` (npm `@u2giants/1password-mcp`, **main-only**) · **Updated:** 2026-07-16
-**Status:** ✅ **v2.6.0 implemented, released to npm, verified live.** One open defect (§5) + one small
-outstanding task (§6).
+**Repository:** `u2giants/1Password-MCP` — npm package `@u2giants/1password-mcp`
+**Branch:** `main` (release branch; do not make releases from an upstream-contribution branch)
+**Updated:** 2026-07-23
+**Current release:** `v2.6.1`, commit `6cf404d`, published as npm `latest`
+**Session state:** Documentation updates are present locally and deliberately **uncommitted**. The user asked only for a detailed documentation update; do not commit or push them unless they explicitly ask.
 
-> For a developer with **zero** prior knowledge of this project or this session. Read §0 → §6, then
-> the spec **[`fix.md`](fix.md)**. You should not need to ask anyone a question.
-
----
-
-## 0. What this project is (read first if you've never seen it)
-
-This repo is a **Model Context Protocol (MCP) server**. An MCP server is a small process an AI
-client (Claude Desktop, Claude Code, OpenAI Codex) launches over stdio; it exposes "tools" the AI
-can call. This one exposes **1Password**: listing vaults/items, reading/creating passwords, and —
-the important one — **`op_run`**.
-
-**`op_run` exists to solve one problem:** an AI needs to *use* a secret (an API key, a DB password)
-in a command **without** the plaintext ever entering the AI's context/transcript. Instead of reading
-a secret and pasting it into a command, the caller passes a **`op://vault/item/field` reference in
-`op_run`'s `env` map**. The server resolves it via the 1Password SDK, injects it into the child
-process's environment only, and **redacts** the resolved value out of returned stdout/stderr/errors
-(replaced with `«REDACTED:NAME»`).
-
-**Who consumes it:** the owner's Windows workstation (Claude Desktop + Codex) and the Ubuntu VPS
-`hetz` (Codex). All launch it unpinned via `npx -y @u2giants/1password-mcp` — see §8.
-
-**Owner/context:** Albert Hazan (`u2giants` on GitHub). This is a **fork** — see §9 for the fork
-traps, which are easy to trip on.
-
-## 1. Prerequisites / access you need
-
-- **Node 20+** and npm. (CI builds on Node 20; the release job needs npm ≥ 11.5.0 for Trusted Publishing.)
-- **A 1Password service account token.** The server is useless without it. Supplied as
-  `OP_SERVICE_ACCOUNT_TOKEN` (env), or `--service-account-token` / `--token` CLI args, or on macOS
-  via `OP_KEYCHAIN_SERVICE`/`OP_KEYCHAIN_ACCOUNT` keychain lookup. See `src/config.ts`
-  (`resolveServiceAccountToken`). On the owner's machines the token is already set in the client
-  configs (§8).
-- **Vault allow-list — a common trip-up.** `op_run`/`op_check_ref` will only resolve `op://` refs
-  from allow-listed vaults. It **defaults to `["vibe_coding"]`** (`DEFAULT_ALLOWED_VAULTS`,
-  `src/config.ts:41`). A ref from any other vault fails with *"not in the allowed vault list"* and the
-  ref is not echoed back. Override with `--allowed-vaults a,b` or `OP_MCP_ALLOWED_VAULTS=a,b`.
-- **To exercise it live** you need it wired into an MCP client (§8), not just `npm test`.
-
-## 2. Why this work exists (the incident that started it)
-
-An AI caller injected a 1Password secret via `op_run`'s `env` and ran it through `bash`:
-`argv:["bash","-c","curl -H \"X-API-Key: $K\" …"]`. `$K` was empty, the API rejected the call, and it
-was **wrongly diagnosed as "op_run's env injection is broken."**
-
-**That was false.** Real cause: on Windows, `bash` resolves via PATH to **WSL** bash
-(`C:\Windows\System32\bash.exe`; proven because a child's `pwd` returns `/mnt/c/…`). WSL starts an
-isolated Linux environment that **does not inherit the Windows process environment** (no `WSLENV`
-forwarding), so the injected vars were invisible inside WSL and the command ran **de-authenticated**.
-Native children (cmd, PowerShell, node, curl.exe) received the env and resolved secrets correctly all
-along. Full proof in `fix.md` §1.
-
-**The expensive part wasn't the bug — it was that nothing surfaced it.** An empty result looked
-identical to "tool broken": no diagnostics, no warning, no server instructions. v2.6.0 removes every
-leg of that trap.
-
-## 3. What shipped (v2.6.0)
-
-Tag `v2.6.0` → commit `be7fe7d` → GitHub Actions → npm Trusted Publishing (OIDC, no token).
-npm `latest` = **2.6.0**. CI ran build + tests green on a clean checkout.
-
-All 8 `fix.md` items landed:
-1. **Unambiguous shell selection** — tokens `cmd`/`powershell`/`pwsh`/`git-bash`/`wsl` resolved to
-   absolute paths; **bare `bash`/`sh` on Windows is rejected** (that's how it silently became WSL).
-   Default shell unchanged (cmd.exe on Windows).
-2. **WSL guard** — WSL target + a resolved `op://` secret → **fails before spawning**, unless
-   `forwardEnvToWsl:true` or `allowMissingSecretsInWsl:true`. `WSLENV` is never touched implicitly.
-3. **Execution diagnostics** on every result — `executionMode`, `shellUsed`, `executable`, `platform`,
-   `wsl`, `injectedEnvNames` (names only), `requestedSecretCount`, `resolvedSecretCount`.
-4. Friendlier `ENOENT` for `argv`. 5. Tightened tool/param descriptions.
-6. **Server-level `instructions`** (`src/instructions.ts`) so every session learns the rules passively.
-7. Redaction contract documented + edge-tested (longest-value-first; `op://` refs stripped from errors).
-8. `machine-atlas.md` note — **not done, see §6** (that file isn't in this repo).
-
-> ⚠️ **Do NOT re-litigate the settled decisions.** `fix.md` §11 "Non-goals" lists four ideas that were
-> considered and **deliberately rejected** after a two-round review: (a) changing the default shell to
-> PowerShell, (b) a *blanket* refusal of all WSL runs, (c) returning env-var **counts instead of**
-> names, (d) encoding-aware redaction (Base64/URL/JSON). Read that section before "improving" any of them.
-
-## 4. Verified live (2026-07-16, real MCP on the Windows/WSL host)
-
-| Scenario | Result |
-|---|---|
-| `command:"echo [%K%]"` + `env {K:"op://…"}` | `[«REDACTED:K»]` + full diagnostics ✅ |
-| bare `shell:"bash"` on Windows | **rejected**, and *before* resolving the secret (`resolvedSecretCount: 0`) ✅ |
-| `shell:"wsl"` + resolved secret, no override | **refused before spawning**, with guidance ✅ |
-| `+ allowMissingSecretsInWsl:true` | guard steps aside, correct warning ✅ (but §5) |
-| `+ forwardEnvToWsl:true` | WSLENV forwarded, exposure warning ✅ (but §5) |
-| `argv:["not-a-real-exe-xyz"]` | friendly ENOENT explaining argv has no shell ✅ |
-
-**The original trap is now impossible.** Unit tests: **120/120** green (local + CI).
-The full live-smoke procedure is `fix.md` §12. To re-run it you must have the version you're testing
-actually loaded in a client (§8) — `npm test` alone will NOT catch §5-class bugs.
+This handoff is for a developer with no prior knowledge of the server, the incident, or the preceding work. It records both the completed traffic-reduction change and the separate, still-open WSL execution defect.
 
 ---
 
-## 5. OPEN DEFECT — the `wsl` shell token cannot execute
+## 1. What this application is
 
-**Repro** (via any MCP client with this server loaded):
-```jsonc
-op_run { "command": "echo hi", "shell": "wsl",
-         "env": { "K": "op://vibe_coding/<any item>/credential" },
-         "allowMissingSecretsInWsl": true }
-```
-**Symptom:** exit code `4294967295`, UTF-16 stdout:
-```
-Invalid command line argument: -c
-Please use 'wsl.exe --help' to get a list of supported arguments.
-```
+This repository is a Node/TypeScript [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server. MCP clients such as Claude Desktop and Codex start it as a local stdio subprocess and call its tools. The server lets an AI work with 1Password without receiving a secret value in the model conversation.
 
-**Cause:** we hand the resolved `wsl.exe` path to Node's `spawn(command, { shell: <path> })`. Node's
-shell convention appends `-c "<command>"` for non-cmd shells, but **`wsl.exe` does not accept `-c`** —
-it wants `-e <cmd>` or `-- <cmd>`, and needs a real shell *inside* the distro.
+The important tool is `op_run`. A caller supplies a command plus an `env` map such as `API_KEY: "op://vibe_coding/item/credential"`. The server validates that the reference is from an allowed vault, resolves it with the 1Password SDK, injects the resulting value only into the child process environment, and redacts resolved values from tool output before returning it to the AI. It does **not** return the plaintext secret to the model.
 
-**Blast radius: LOW but real.** The **safety guard is unaffected and works** (the point is to steer
-callers away from WSL). What's broken is the **opt-in escape path**: a caller who explicitly sets
-`allowMissingSecretsInWsl` or `forwardEnvToWsl` gets a confusing wsl.exe usage error instead of their
-command. `cmd`, `powershell`, `pwsh`, `git-bash`, and all `argv` runs are unaffected.
+This is a fork of `CakeRepository/1Password-MCP`, published under the scoped package name `@u2giants/1password-mcp`. The owner uses it on Windows workstations and an Ubuntu VPS. Service-account access is scoped to the `vibe_coding` vault; do not put secret values in this repository, documentation, tests, shell output, commits, or pull-request text.
 
-**Why 120 passing tests missed it:** `tests/op-run.test.ts` **mocks `spawn`**, so it asserts the
-*arguments we build*, not that `wsl.exe` accepts them. Codex (which wrote the code) never executed
-anything — its runner couldn't launch a shell — so nothing touched the real binary until the
-post-release live smoke.
+## 2. What we set out to do this session, and why
 
-**Proposed fix (2.6.1):** special-case the `wsl` token — do **not** route it through Node's `shell`
-option. Build an explicit argv, e.g. `wsl.exe -e bash -lc "<command>"` (or `wsl.exe -- bash -c …`),
-while preserving the guard, WSLENV forwarding, warnings, and diagnostics (`executionMode` stays
-`"shell"`, `shellUsed` stays the resolved `wsl.exe`). Add a test asserting the built argv contains no
-bare `-c` for the wsl token, and ideally **one non-mocked smoke test** that really runs a trivial
-command through each resolvable shell — that class of test is what was missing.
+Several AI sessions can start many MCP servers at once. Separately, a single `op_run` command may need several environment secrets. The prior implementation called the 1Password SDK once per `op://` environment value. That made a command with five values create five serial secret-resolution calls. Repeated sessions and commands can therefore consume the 1Password request allowance even when every call is legitimate.
 
-**Workaround until fixed:** use `shell:"git-bash"` for POSIX work, or
-`argv:["wsl.exe","-e","bash","-c","…"]` directly — **note `argv` bypasses the WSL guard, so do not
-combine that with secrets.**
+The chosen minimal-complexity server change was **not** a persistent secret cache, a local broker, a daemon, or cross-process throttling. Instead, `op_run` now collects all secret references needed by one command and gives them to the SDK's `resolveAll` bulk operation once. This reduces the per-command request pattern from one SDK resolution per variable to one bulk SDK request, while keeping plaintext values in memory only for the executing MCP request and child process.
 
-## 6. Also outstanding
+Related but separate work in `C:\repos\ai-devops` prevents startup storms: commit `c7f5b1f` adds a Windows launcher that resolves the shared MCP environment once under an OS mutex and reuses a short-lived, user-bound encrypted cache. That machine-level launcher reduces simultaneous startup refreshes. This repository's `resolveAll` change reduces a **single `op_run` command's** repeated secret work. Neither change is a distributed, account-wide rate limiter.
 
-- **`machine-atlas.md` note** (`fix.md` item 8): add "on Windows, bare `bash` = WSL; injected env does
-  not cross the boundary." That file is **not in this repo** — it lives with the owner's global AI
-  config (`~/.claude/`, synced via the `ai-devops` hub). Add it there, not here. Codex correctly
-  skipped it rather than creating a stray file.
+## 3. Current state and verified evidence
 
-## 7. Where things live
+| Area | State | Evidence |
+|---|---|---|
+| Published package | Complete | `v2.6.1` tag at `6cf404d`; `npm view @u2giants/1password-mcp version` returned `2.6.1`. |
+| Release | Complete | GitHub release workflow run `30007241675` completed successfully: <https://github.com/u2giants/1Password-MCP/actions/runs/30007241675>. |
+| Bulk resolution implementation | Complete | `src/tools/op-run.ts:229-236` validates the SDK capability, collects `op://` references, and calls `client.secrets.resolveAll(secretReferences)` once. |
+| Literal environment values | Preserved | If no environment value begins with `op://`, no 1Password client is initialized for resolution. This is tested so ordinary non-secret `op_run` calls do not create avoidable 1Password traffic. |
+| Secret lifecycle | No persistent cache | The resolved map exists only while the `op_run` call is executing. It is used to form the child environment, output is redacted, and the call ends. A later command resolves again. |
+| Tests and static checks | Passed for release | The v2.6.1 implementation passed the full suite (120 tests), TypeScript lint, and build before publication. |
+| Upstream contribution | Open, not merged | Upstream PR [CakeRepository/1Password-MCP#12](https://github.com/CakeRepository/1Password-MCP/pull/12), branch `feat/op-run-op-check-ref`, includes the generic bulk change in commit `c27a574`. Its existing description explains `op_run` generally but does **not yet explain the bulk-resolution rationale in detail**. |
+| Documentation in this checkout | In progress, uncommitted | `AGENTS.md`, `README.md`, `docs/architecture.md`, and `docs/development.md` have detailed local documentation changes. They were made at the user's request and have not been committed or pushed. |
+| WSL shell-token execution | Still open | `src/tools/op-run.ts:487` passes `wsl.exe` through Node's `shell` option. Node uses a `-c` convention that `wsl.exe` does not accept. The guard against accidental WSL secret use still works; the explicit WSL path does not execute correctly. |
 
-- `src/tools/op-run.ts` — the tool: shell resolution, WSL detection/guard, `diagnostics()`,
-  `redact()` (longest-value-first), `safeMessage()` (strips `op://` refs from errors).
-- `src/instructions.ts` → wired in `src/index.ts` (`@modelcontextprotocol/sdk` v1.26.0 accepts
-  `instructions` on `McpServer` options directly).
-- `src/config.ts` — `SERVER_VERSION`, token resolution, `DEFAULT_ALLOWED_VAULTS` (L41).
-- `tests/op-run.test.ts` (29 tests, **spawn is mocked**), `tests/instructions.test.ts`.
-- `fix.md` — the authoritative spec (implemented) incl. **Non-goals** (§11) and the live-smoke plan (§12).
-- `PUBLISHING.md` — release process. `CHANGELOG.md` — history.
+The `CHANGELOG.md` entry for `2.6.1` is accurate: this release replaces repeated per-reference SDK resolution with one bulk `resolveAll` call for an `op_run` request. It intentionally does not claim a persistent cache or cross-process coordination.
 
-## 8. Build / test / release / consume
+## 4. Everything tried that did not work
 
-- **Build:** `npm run build` (tsc). **Test:** `npm test` (vitest).
-- **Version lives in FOUR places and they must match** (CI enforces it): `package.json` `"version"`,
-  `server.json` top-level `"version"` **and** `packages[0].version`, `src/config.ts` `SERVER_VERSION`.
-  Helper keeps them in sync: `node scripts/bump-version.mjs patch|minor|<exact>`.
-- **Release:** bump → commit → `git tag vX.Y.Z` → `git push origin main --follow-tags`. The tag
-  triggers `.github/workflows/release.yml` → OIDC Trusted Publishing (**no npm token exists to
-  rotate**). Confirm: `npm view @u2giants/1password-mcp version`.
-- **Consumers need NO install** — all launch it unpinned, so they pick up `latest` on restart:
-  - Windows Claude Desktop (**MSIX path**):
-    `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`
-    (there is also a stale-looking `%APPDATA%\Claude\claude_desktop_config.json`).
-  - Windows Codex: `~\.codex\config.toml` → `[mcp_servers."1password"]`.
-  - VPS `hetz`: `/root/.codex/config.toml`, `command = "/usr/bin/npx"`. Not a global npm install,
-    not a container — so **no Ansible/Coolify involvement**.
-  - **Never hand-edit these configs** — the owner's rule; they're generated by Dropbox setup scripts
-    (`setup-claude-mcps.ps1` / `setup-codex-mcps.ps1`). Nothing needed anyway: none are version-pinned.
-  - If a stale version launches, clear the npx cache (`~/.npm/_npx`, or
-    `%LOCALAPPDATA%\npm-cache\_npx`).
-- **After publishing, restart the client** — that's the only way the new server code loads.
+1. **Resolving environment references one at a time.** The old loop called the SDK separately for each `op://` environment entry. It was functionally correct but needlessly multiplied serial secret-resolution work for commands that need several credentials. It was replaced by a single `resolveAll` SDK call after all references are collected.
+2. **Treating the Windows/WSL incident as failed environment injection.** It was initially believed that `op_run` was not passing variables to child processes. Native Windows children did receive them. The actual failure occurred because bare `bash` resolved to WSL on Windows, and WSL does not inherit the Windows process environment by default.
+3. **Assuming mocked unit tests prove real shell behavior.** The `op_run` tests mock process spawning. They correctly cover request construction and safety decisions, but they did not prove that `wsl.exe` accepts the generated command line. A post-release live smoke exposed the `-c` incompatibility.
+4. **Using `op run --env-file` with Git-Bash process substitution on Windows.** The native `op.exe` could not use the MSYS `/proc/...` file-descriptor path. The related ai-devops launcher uses a real temporary environment file instead.
+5. **Using `argv:["wsl.exe", ...]` as a secret-bearing workaround.** Direct argv execution bypasses the `shell:"wsl"` guard. It must not be combined with secrets until the explicit WSL path is fixed and tested.
 
-## 9. Environment traps (all cost time this session — do not rediscover)
+## 5. Root causes and key findings
 
-- **`gh` targets the WRONG repo by default.** This repo has an `upstream` remote
-  (`CakeRepository/1Password-MCP`), so `gh run list` 404s. **Always pass `-R u2giants/1Password-MCP`.**
-- **Never tag from `feat/item-get-edit-list`** — that branch's `package.json` is named
-  `@takescake/1password-mcp` (it backs an upstream PR). Release only from `main`; the workflow has a
-  name guard that will reject it anyway.
-- **On this Windows host, `bash` is WSL**, not Git Bash. The Claude Code "Bash tool" uses **Git Bash**
-  (which *does* inherit Windows env) — a different `bash`. Don't conflate them.
-- **The `codex` on PATH is a BROKEN install.** `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin` has
-  `codex.exe` but is **missing `codex-windows-sandbox-setup.exe` and `codex-command-runner.exe`**, so
-  any sandboxed `codex` run fails with `program not found` and silently does nothing. The **complete**
-  install is `%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\codex.exe` — invoke that directly. (Caused by
-  running the PowerShell installer; unrepaired as of 2026-07-16.)
-- **Codex model/CLI coupling:** the account's default model (`gpt-5.6-sol`) needs a recent CLI; older
-  models are rejected on ChatGPT-account auth. If Codex errors on the model, update the CLI via the
-  **native PowerShell** installer (`irm https://chatgpt.com/codex/install.ps1 | iex`) — `codex update`
-  from Git Bash fails on an msys `tar` vs `C:` path clash.
-- **Line endings:** git warns LF→CRLF on commit here. Harmless.
+- The 1Password SDK version in this project (`@1password/sdk` `0.3.1`) exposes `SecretsApi.resolveAll(secretReferences)`. `op_run` now uses that API at `src/tools/op-run.ts:236` rather than reintroducing a per-variable loop.
+- The optimization is deliberately **per command**. It is a single SDK bulk request for the references in that request. It does not deduplicate across independent MCP subprocesses, sessions, or later commands, and it makes no claim about account-wide traffic control.
+- The server validates all references against the configured vault allow-list before resolution. Invalid or non-allow-listed references fail before a child process starts. Keep that ordering if modifying the code.
+- The server resolves only values that look like `op://` references. Literal values are copied through as literal environment values and do not require a 1Password SDK client.
+- The Windows WSL issue is an execution-boundary issue, not a 1Password permission or injection issue. `wsl.exe` needs an explicit command such as `wsl.exe -e bash -lc <command>`; it cannot be used as Node's generic shell executable because it does not accept Node's `-c` invocation convention.
+- The global machine atlas now documents the bare-`bash`/WSL environment boundary at `C:\repos\ai-devops\templates\system\machine-atlas.md:110-116`. The old handoff's claim that this note remained outstanding is obsolete.
 
-## 10. What we tried that did NOT work (don't repeat)
+## 6. Exact next steps
 
-- **Concluding `op_run`'s `env` was broken.** Wrong — WSL was dropping it. A single `pwd` returning
-  `/mnt/c/…` would have ended the misdiagnosis in one step. **Establish platform / resolved
-  executable / shell / cwd / env-boundary BEFORE blaming a tool.**
-- **Claiming the `shell` param was ignored.** Also wrong — `shell: shell ?? true` honored it; bare
-  `bash` merely resolved to WSL. The evidence that settles it: with `shell:"bash"`, `$PLAIN` expanded
-  to **empty** (`P=[]`), not to the literal `$PLAIN` — proving a POSIX shell ran. Don't "add shell
-  support"; it was always there. The fix was **disambiguation**.
-- **`argv:["echo", …]`** → `spawn echo ENOENT`. `argv` is a direct spawn with no shell; `echo` is a
-  cmd builtin, not an executable.
-- **`op run --env-file <(echo …)`** (process substitution) → the native `op.exe` fails on
-  `/proc/<pid>/fd` msys paths. Write a **real** temp env-file instead.
-- **Trusting an exit code as proof of work.** A `nohup … &` inside an already-backgrounded task
-  reported "completed, exit 0" having changed nothing. **Verify the working tree**, not the exit code.
-- **Trusting green unit tests as proof of behavior.** 120 passing tests + a clean CI run did not catch
-  §5, because `spawn` is mocked. **Live-smoke anything that touches a real binary.**
-- **Truncating investigative output.** A `grep -rl … | head -5` hid the very config file being looked
-  for and nearly produced a false "it's not installed there" conclusion. Don't `head` a search whose
-  absence you intend to treat as evidence.
-- **`grep -A4` on `~/.codex/config.toml`** dumps the **plaintext 1Password service-account token**
-  into the transcript. That token is stored unencrypted there. Extract only `command`/`args` lines.
+1. **Finish the documentation-only handoff.** Review the uncommitted Markdown diff in this repository. Verify with `git diff --check` and `git diff -- AGENTS.md README.md docs/architecture.md docs/development.md HANDOFF.md`. It is ready for the user to decide whether to commit it. Do not include secrets in the review output.
+2. **If the user authorizes a documentation commit, commit only the Markdown files.** Use the repository's main-only policy, set the author to `Albert Hazan <u2giants@users.noreply.github.com>`, push `main`, and report the resulting SHA. No release/version bump is needed for prose-only changes.
+3. **Update upstream PR #12's description if authorized.** Add a concise rationale: commands with several secret env values previously performed serial per-reference SDK reads; this patch collects references and invokes `resolveAll` once; it intentionally does not cache values or coordinate separate MCP processes. Do not represent upstream acceptance or a guaranteed backend network-request count that has not been independently documented.
+4. **Fix the remaining WSL execution defect in a separate code change.** In `src/tools/op-run.ts`, special-case the `wsl` shell token rather than passing its executable as `spawn`'s `shell` value. Construct an explicit command path and arguments (for example `wsl.exe -e bash -lc <command>`), preserving the existing WSL secret guard, opt-in forwarding warning, diagnostics, and redaction behavior.
+5. **Add two verification layers for that WSL fix.** First, add a unit test asserting the explicit WSL invocation contains no Node-style bare `-c` supplied to `wsl.exe`. Second, run a non-mocked Windows smoke test with a harmless command and no secret. Only after that passes, test the safety guard and the opt-in path with an approved non-sensitive reference. You will know it worked when `shell:"wsl"` executes the harmless command and diagnostics still report WSL accurately.
+6. **Keep the traffic-control layers distinct.** If startup requests still spike, inspect the ai-devops launcher/configuration rather than adding a cache or background service here. If individual `op_run` commands use many values, retain the `resolveAll` implementation here. Do not solve either problem by exposing plaintext secrets to the AI.
+
+## 7. Constraints and gotchas
+
+- Secrets belong only in 1Password vault `vibe_coding`. Never print or commit a service-account token, resolved secret, password, or an entire MCP configuration file that might contain one.
+- `op_run` is safe because it injects a resolved secret into a subprocess environment and redacts returned output. Do not add a tool that returns a resolved secret directly to the model.
+- No persistent secret cache, local broker, daemon, or new installed software was approved for this work. The bulk resolution change is intentionally the lowest-moving-parts solution inside the server.
+- The SDK call is one `resolveAll` API call for a command. Phrase its effect as reducing per-variable SDK resolution calls; do not overstate unverified internal 1Password transport behavior.
+- Releases happen only from `main`. The upstream contribution branch has different package metadata and must never be tagged or published under the fork's npm package.
+- Use `gh` with an explicit repository for fork operations. For the fork release repo: `gh ... -R u2giants/1Password-MCP`. The upstream PR target is `CakeRepository/1Password-MCP`.
+- Consumer MCP configurations are managed by Dropbox setup scripts, not hand-edited. Restarting a client causes unpinned `npx -y @u2giants/1password-mcp` consumers to download the current npm package; clear the relevant npx cache only if a client demonstrably holds an old package.
+- On Windows, bare `bash` commonly means WSL `bash`, whereas a Git-Bash-hosted coding tool may run a different bash that does inherit the Windows environment. Establish the resolved executable and environment boundary before diagnosing an `op_run` failure.
+
+## 8. Access and environment
+
+- Repository checkout: `C:\repos\1Password-MCP`.
+- GitHub CLI and npm publication were authenticated for the v2.6.1 release. The successful release did not require an npm token because it uses GitHub Trusted Publishing.
+- The upstream contribution is PR [#12](https://github.com/CakeRepository/1Password-MCP/pull/12), currently open. Its latest relevant commit is `c27a574`.
+- The 1Password service-account token is supplied to MCP processes by their client configuration or the related ai-devops launcher. Its value must not be read into transcripts merely to diagnose this work.
+- Relevant code: `src/tools/op-run.ts`; tests: `tests/op-run.test.ts`; version: `package.json`, `server.json` (two fields), and `src/config.ts`; release instructions: `PUBLISHING.md`.
+- Relevant related implementation: `C:\repos\ai-devops` commit `c7f5b1f`. That project owns shared MCP environment startup consolidation; this project owns `op_run`'s in-process bulk secret resolution.
+
+## 9. Open questions and risks
+
+- **Upstream review:** PR #12 is open and the maintainers may prefer a different abstraction or test arrangement. Do not assume the upstream project will merge it.
+- **PR explanation gap:** The current upstream PR body does not yet say why the `resolveAll` change matters. The local repository documentation does. Update the PR body only with user authorization or as part of a requested PR-maintenance task.
+- **WSL execution:** The WSL guard prevents accidental secret forwarding, but the opt-in WSL shell mode still fails at runtime. It is not fixed by v2.6.1 and must not be presented as fixed.
+- **Serial traffic beyond one command:** `resolveAll` prevents a single command from multiplying SDK calls by number of environment variables. It does not reduce a long sequence of separate `op_run` commands. The user explicitly rejected a broker/cache/daemon, so accept that boundary unless requirements change.
+- **Cross-machine traffic:** A local launcher or this server cannot see use of the same service account on another workstation or VPS. Least-privilege service accounts per machine reduce blast radius; an account-wide gate would require centralized coordination and was intentionally not introduced.
+
+## Documentation self-audit — 2026-07-23
+
+1. **Could a developer new to the project continue without a question?** Yes. Sections 1–3 define the product, incident, release, code locations, PR, and exact working-tree state; sections 6–8 give executable next steps and access boundaries.
+2. **Does it preserve failed approaches and their causes?** Yes. Section 4 records the serial-resolution design, WSL misdiagnosis, mocked-test gap, and unsafe argv workaround; section 5 records the root causes.
+3. **Does each next step have a verification gate and respect scope?** Yes. Section 6 specifies the validation commands, the user-authorization boundary for commit/push/PR editing, and concrete criteria for a later WSL smoke test. No secret values are included.

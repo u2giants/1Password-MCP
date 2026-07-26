@@ -44,6 +44,25 @@ npm run lint                  # strict type-check
 `prepublishOnly` runs `clean && build && test` automatically on publish, so a
 green local `build`+`test` is the gate.
 
+### Changing `op_run` secret resolution
+
+`op_run` must resolve all `op://` environment references needed by one command
+through one SDK `resolveAll` call. Do not reintroduce a loop of individual
+`secrets.resolve` calls: that multiplies 1Password traffic for every extra
+environment variable and defeats the request-reduction guarantee.
+
+When changing this path, run:
+
+```bash
+npm test -- --run tests/op-run.test.ts
+npm run lint
+```
+
+The `op-run` tests must prove both that multiple references are supplied to one
+bulk call and that literal-only environment maps do not initialize the SDK.
+Tests must use mocked SDK responses; do not add real service-account tokens or
+live vault reads to the test suite.
+
 ## Running the server locally
 
 The server speaks MCP over stdio, so running it directly just waits for JSON-RPC

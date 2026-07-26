@@ -29,6 +29,33 @@ config object (`src/config.ts`).
 | Utils | `src/utils.ts` | `errorResult()` and other result helpers; cryptographically secure password generation |
 | Types | `src/types.ts` | Shared types and log-level tables |
 
+## Bulk secret resolution for `op_run`
+
+`op_run` is the path for using several 1Password values in one local command
+without returning their plaintext to the MCP client. It must not turn a command
+with several environment variables into several independent vault requests.
+
+The request flow is intentionally simple and stateless:
+
+```text
+MCP op_run request
+  → collect env values that are op:// references
+  → validate every referenced vault against the allow-list
+  → one SDK secrets.resolveAll([...references]) request
+  → verify one successful response for every reference
+  → inject values into the one child-process environment
+  → redact values from the MCP result and discard them when the process ends
+```
+
+Literal `env` entries bypass the SDK entirely. If no `op://` value is present,
+`op_run` does not initialize a 1Password client. If any bulk response is missing
+or unsuccessful, it returns a safe error and does not launch the child process.
+
+This design reduces request count for a single command without adding a local
+broker, daemon, or persistent secret cache. It does not coordinate separate MCP
+subprocesses or cache a value for later commands; those are deliberately outside
+this package's stateless design and belong to the caller's launch policy.
+
 ## Data flow
 
 ```
@@ -68,6 +95,10 @@ result (errorResult() on failure, isError flag set) ──► back over stdio
   child processes, and OS process listings are outside the contract. Ref
   resolution for `op_run`/`op_check_ref` is constrained to
   `OP_MCP_ALLOWED_VAULTS` (default `vibe_coding`).
+- **Bulk is per command, not a cache.** `op_run` makes one `resolveAll` request
+  for all of the command's secret references. It retains the returned values only
+  long enough to prepare and run that command; it stores no values on disk and
+  does not serve a later MCP call from a secret cache.
 - **Execution boundaries are explicit.** `op_run`'s `argv` form directly spawns
   a real executable with no shell expansion; `command` uses an explicitly
   resolved shell (or the unchanged platform default). On Windows, ambiguous bare

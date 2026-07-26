@@ -191,6 +191,28 @@ context. They mirror `.claudeignore` / `.cursorignore` and `.gitignore`:
 
 ## Intentional quirks and non-obvious decisions
 
+### `op_run` resolves a command's secrets in one bulk request
+
+Looks like:
+Each `op://` environment entry can be resolved independently in a simple loop.
+
+Actually:
+`src/tools/op-run.ts` validates all secret references first, then calls the
+1Password SDK's `secrets.resolveAll` once for the entire command. It maps the
+individual responses back to the requested environment variable names only after
+the bulk response returns.
+
+Why:
+A command commonly needs more than one credential. One SDK call per variable
+creates avoidable vault traffic and can exhaust request capacity through ordinary
+serial usage, even when no parallel storm is occurring.
+
+Do not change because:
+Replacing the bulk request with a per-variable `secrets.resolve` loop silently
+restores the multiplied request pattern. This is not a cross-process cache or a
+broker: plaintext remains only for the active MCP/child-process lifetime and is
+not persisted. See `docs/architecture.md` and `tests/op-run.test.ts`.
+
 ### Two package names across branches
 
 Looks like:
