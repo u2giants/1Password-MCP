@@ -2,8 +2,16 @@
  * Tests for src/config.ts — server configuration and CLI argument parsing.
  */
 
-import { readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { requireServiceAccountToken } from "../src/client.js";
 import {
   getConfig,
   readMacOsKeychainToken,
@@ -22,6 +30,7 @@ const packageJson = JSON.parse(
 describe("config", () => {
   const originalArgv = process.argv;
   const originalEnv = { ...process.env };
+  const temporaryDirectories: string[] = [];
 
   beforeEach(() => {
     resetConfig();
@@ -31,6 +40,7 @@ describe("config", () => {
     delete process.env.OP_INTEGRATION_NAME;
     delete process.env.OP_INTEGRATION_VERSION;
     delete process.env.OP_SERVICE_ACCOUNT_TOKEN;
+    delete process.env.OP_SERVICE_ACCOUNT_TOKEN_FILE;
     delete process.env.OP_KEYCHAIN_SERVICE;
     delete process.env.OP_KEYCHAIN_ACCOUNT;
   });
@@ -46,6 +56,9 @@ describe("config", () => {
       }
     });
     resetConfig();
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("exports correct server constants", () => {
@@ -256,6 +269,34 @@ describe("config", () => {
     expect(refreshServiceAccountToken()).toBe("late-token");
     expect(getConfig().serviceAccountToken).toBe("late-token");
     expect(getConfig().tokenSource).toBe("env");
+  });
+
+  it.each(["--service-account-token-file", "--token-file"])(
+    "reads a token through the %s CLI flag",
+    (flag) => {
+      const directory = mkdtempSync(join(tmpdir(), "onepassword-mcp-"));
+      temporaryDirectories.push(directory);
+      const tokenPath = join(directory, "token");
+      writeFileSync(tokenPath, "cli-file-token\n", "utf8");
+      process.argv = ["node", "index.js", flag, tokenPath];
+
+      expect(getConfig().serviceAccountToken).toBe("cli-file-token");
+      expect(getConfig().tokenSource).toBe("file");
+    },
+  );
+
+  it("the client retry recovers when a configured token file appears later", () => {
+    const directory = mkdtempSync(join(tmpdir(), "onepassword-mcp-"));
+    temporaryDirectories.push(directory);
+    const tokenPath = join(directory, "late-token");
+    process.argv = ["node", "index.js"];
+    process.env.OP_SERVICE_ACCOUNT_TOKEN_FILE = tokenPath;
+
+    expect(getConfig().tokenSource).toBe("missing");
+    writeFileSync(tokenPath, "late-file-token\n", "utf8");
+
+    expect(requireServiceAccountToken()).toBe("late-file-token");
+    expect(getConfig().tokenSource).toBe("file");
   });
 
   it("uses default integration name/version", () => {

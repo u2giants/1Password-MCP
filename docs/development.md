@@ -81,7 +81,7 @@ on stdin. Two practical ways to exercise it:
 - **All logs go to stderr** — stdout is the MCP protocol channel. Never add
   `console.log`/stdout writes in server code; use `log()` / `logError()` from
   `src/logger.ts`.
-- Startup logs include `tokenSource` (`args`/`env`/`keychain`/`missing`), which is
+- Startup logs include `tokenSource` (`args`/`env`/`file`/`keychain`/`missing`), which is
   the fastest way to confirm the token was picked up.
 - Before blaming a tool for an execution failure, establish the actual platform,
   resolved executable, shell, working directory, and environment boundary. This

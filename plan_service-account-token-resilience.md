@@ -17,8 +17,8 @@
 | 1 | Root-cause the intermittent "Service account token is required" failure | ✅ done 2026-07-26 | § 6 |
 | 2 | Launcher: always inject `OP_SERVICE_ACCOUNT_TOKEN`, scoped to the 1Password MCP | ✅ done 2026-07-26 | ai-devops `81954f8` |
 | 3 | Launcher: also pass `OP_SERVICE_ACCOUNT_TOKEN_FILE` (path, not secret) | ✅ done 2026-07-26 | ai-devops `f5b7646` |
-| 4 | Server: token-file source + self-healing re-resolution + better error | ✅ done 2026-07-26 | this repo `83af486` |
-| 5 | Server: version bump to 2.7.0, tests, CI green on `main` | ✅ done 2026-07-26 | this repo `eb38c01` |
+| 4 | Server: token-file source + limited retry + better error | ✅ done 2026-07-26 | this repo `83af486` |
+| 5 | Server: version bump to 2.7.0, full retry tests, docs, registry metadata | ✅ done 2026-07-27 | this repo `main` |
 | 6 | **Publish v2.7.0 to npm (tag `v2.7.0`)** | ⬜ **OPEN — needs Albert's go-ahead** | § 9 Step 6 |
 | 7 | Restart Claude Code and verify the MCP comes up with a token | ⬜ open (blocked by 6) | § 9 Step 7 |
 | 8 | Update docs/memory to say the fix is live | ⬜ open (blocked by 7) | § 9 Step 8 |
@@ -46,10 +46,11 @@ session, with an error that made it look like the 1Password account itself was
 misconfigured. It wasn't — the credential was fine. The server had simply started
 without it and had no way to recover.
 
-**When this is done:** the 1Password MCP always comes up able to read the vault, and
-if it ever does start without a credential it heals itself instead of staying dead
-until the whole app is restarted. Albert should never again lose a session to a
-false "your token is required" error.
+**When this is done:** the launcher reliably gives the 1Password MCP its credential
+on every start. The server also supports a cross-platform token file and retries its
+configured sources once, so it can recover if that file appears or becomes readable
+after startup. Environment-only processes still need a relaunch because a parent
+cannot add an environment variable to an already-running child.
 
 > **If a step in this plan conflicts with that goal, THE GOAL WINS — stop and flag
 > it.** For example: if publishing the release turns out to break other consumers of
@@ -88,7 +89,8 @@ every MCP launch from burning 1Password service-account requests.
 
 ## 3. What triggered this work
 
-**Observed 2026-07-26, mid-session**, during unrelated DAM work. Every 1Password MCP
+**Observed 2026-07-26, mid-session**, during unrelated DAM work. After an MCP
+reconnect or hidden process restart, every 1Password MCP
 tool call (`vault_list`, `item_get`, `item_edit`, `op_run`, …) began failing with:
 
 ```
@@ -116,9 +118,9 @@ was never the problem.
 ## 4. Scope — in and out
 
 **In scope**
-- Making the 1Password MCP server resilient to being started without a token.
+- Making the launcher reliably provide the token at every server start.
+- Letting the server recover when a configured token file becomes available late.
 - Giving the server a credential source that works on Windows/Linux (not just macOS).
-- Making the launcher reliably provide the credential to that one MCP.
 - Publishing the fix so the machines actually get it.
 
 **NOT in scope (do not do these)**
@@ -157,7 +159,7 @@ node -p "require('./package.json').version"           # in this repo: expect 2.7
 | `src/config.ts:179-185` | `getConfig()` reads `--service-account-token-file` / `--token-file`. |
 | `src/config.ts:218` | **NEW** `refreshServiceAccountToken()` — re-resolves against current args/env/file and updates the cached config. |
 | `src/client.ts:14-36` | `requireServiceAccountToken()` now calls `refreshServiceAccountToken()` once before throwing; error message rewritten. |
-| `tests/config.test.ts` | 5 new tests (see § 10). |
+| `tests/config.test.ts` | Token-file, flag-alias, and full client retry tests (see § 10). |
 | `README.md` | Documents precedence + the token-file option. |
 | `package.json`, `server.json`, `src/config.ts:10` | Version **2.7.0** (all three must stay in sync). |
 
@@ -183,7 +185,10 @@ where `$tokenFile` = `~/.config/ai-devops/op-service-account`.
 
 ## 6. Key findings and root cause
 
-**There were TWO independent defects. Fixing either alone leaves a real failure mode.**
+**There was one incident-causing launcher defect and one server resilience gap.**
+The launcher fix is required for the observed incident. The server change is useful
+defense for token-file users, but it cannot repair a missing environment variable in
+an already-running process.
 
 ### Defect A — the launcher only exported the token on one code path
 
@@ -212,14 +217,13 @@ Evidence gathered at the time: token file present (866 bytes); `mcp.env` has no
 `OP_SERVICE_ACCOUNT_TOKEN` entry; cache file 6 minutes old (i.e. fresh) while the MCP
 was failing.
 
-### Defect B — the server turned that into a permanent, unrecoverable failure
+### Resilience gap B — the server had no late token-file recovery
 
 In `src/config.ts`, `getConfig()` begins `if (_config) return _config;` — **the token
-is resolved once at startup and cached for the process's entire lifetime.** There was
-no retry and no lazy re-read, so a process that started tokenless failed **every**
-call until the whole MCP host was restarted.
+is resolved once and cached.** There was no retry, so even a configured token file
+that appeared or became readable later could not recover the process.
 
-Worse, the only non-env fallback was `readMacOsKeychainToken()`, which returns
+The only non-env fallback was `readMacOsKeychainToken()`, which returns
 `undefined` unless `platform === 'darwin'`. **On Windows there was no fallback at
 all** — even though the token was sitting readable on disk at
 `~/.config/ai-devops/op-service-account` the entire time.
@@ -236,7 +240,7 @@ misconfiguration, rather than saying "this process started without one."
 | **Hard-code `~/.config/ai-devops/op-service-account` inside the npm package** | This is a **public package**; baking one user's machine path into it is wrong. Hence a generic `OP_SERVICE_ACCOUNT_TOKEN_FILE` / `--service-account-token-file` that any launcher can point anywhere. |
 | **Shorten or remove the 15-minute DPAPI cache window** | Treats the symptom, and the cache exists on purpose — to cap 1Password service-account request usage (see ai-devops `dc72619`). Would trade one problem for a quota problem. |
 | **Just restart Claude Code when it happens** | The band-aid we were living with. Albert's standing rule is root-cause fixes, no band-aids. |
-| **Fix only the launcher** (where this session initially stopped) | Leaves Defect B: any future tokenless start is still permanently fatal, on any machine, from any cause. Albert explicitly asked whether the server itself was implicated — it was. |
+| **Fix only the launcher** (where this session initially stopped) | Fixes the observed incident, but leaves no cross-platform file source and no recovery when a configured file becomes available late. The server work is defense in depth, not the primary root-cause fix. |
 
 ### A failed attempt worth not repeating (test methodology)
 
@@ -260,8 +264,9 @@ Verifying the launcher fix took three tries. Two false results:
 - **L2.** The launcher injects the credential **only** for the `1password-mcp` child
   (matched on the joined command line). Scope is a security decision.
 - **L3.** The launcher passes `OP_SERVICE_ACCOUNT_TOKEN_FILE` as a **path, not a secret**.
-- **L4.** `refreshServiceAccountToken()` retries **once per failing call** and mutates the
-  cached config. No polling, no timers, no background refresh.
+- **L4.** `refreshServiceAccountToken()` retries configured sources **once per failing
+  call** and mutates the cached config. It can recover a late file, but cannot receive
+  a new environment variable from the parent. No polling, timers, or background refresh.
 - **L5.** Version **2.7.0** — a minor bump, because this adds a feature (new token source)
   and is fully backwards compatible.
 - **L6.** The macOS Keychain path is kept as-is. Not deprecated, not changed.
@@ -361,6 +366,8 @@ Depends on Step 7 passing.
    2026-07-26** in the same commit that added this plan — see the
    "Service-account token handling" row of the AGENTS.md documentation map. Decision
    **O2 is therefore closed.** Nothing to do here.
+4. `docs/configuration.md`, `docs/development.md`, and `server.json` were corrected
+   on 2026-07-27 to include the token-file source and its limited recovery behavior.
 
 **Verification gate:** a fresh reader of `AGENTS.md` can find this plan (already true),
 and the memory entry no longer claims the fix is unpublished.
@@ -376,17 +383,22 @@ and the memory entry no longer claims the fix is unpublished.
    returns `undefined` for blank content, for a throwing reader (ENOENT), and for
    `undefined` path.
 5. `refreshServiceAccountToken recovers a token after a tokenless start` — the
-   regression test for Defect B: starts with no token, asserts `tokenSource === "missing"`,
-   then makes a token available and asserts recovery.
+   direct refresh test: starts with no token, then changes the process environment and
+   asserts the resolver updates its cached state. This simulates an in-process change;
+   a parent cannot make this change from outside a running child.
+6. `reads a token through the --service-account-token-file CLI flag` and its
+   `--token-file` alias — prove both public flags reach the real configuration path.
+7. `the client retry recovers when a configured token file appears later` — proves
+   the full `requireServiceAccountToken()` path, not only the resolver helper.
 
 **Must stay green** (whole suite, run from this repo):
 ```bash
-npm test        # vitest run — 125 tests / 8 files as of 2026-07-26
+npm test        # vitest run — 128 tests / 8 files as of 2026-07-27
 npx tsc --noEmit
 npm run build
 ```
 
-**No new tests are required for Steps 6–8** — they are release and verification steps,
+**No further tests are required for Steps 6–8** — they are release and verification steps,
 covered by the gates above.
 
 ## 11. Constraints, standing rules, and gotchas in force
@@ -456,7 +468,8 @@ covered by the gates above.
 - [x] Root cause proven for both defects, written down (§ 6).
 - [x] Launcher fix committed + pushed (`ai-devops` `81954f8`, `f5b7646`).
 - [x] Server fix committed + pushed (`1password-mcp` `83af486`, `eb38c01`).
-- [x] 5 new tests; full suite green (125 tests); `tsc --noEmit` clean; build clean.
+- [x] Token-file, both CLI aliases, and full client retry covered; full suite green
+  (128 tests); `tsc --noEmit` clean; build clean.
 - [x] CI green on `main`.
 - [ ] Albert has explicitly approved the npm publish.
 - [ ] `v2.7.0` tag pushed; release workflow succeeded; `npm view … version` = `2.7.0`.
@@ -467,7 +480,7 @@ covered by the gates above.
 **Risks and rollback**
 | Risk | Likelihood | Mitigation / rollback |
 |---|---|---|
-| Publishing a bad 2.7.0 to a public registry | Low — CI green, 125 tests | Cannot unpublish; roll **forward** with 2.7.1. Consumers can pin 2.6.1. |
+| Publishing a bad 2.7.0 to a public registry | Low — CI green, 128 tests | Cannot unpublish; roll **forward** with 2.7.1. Consumers can pin 2.6.1. |
 | Change is backwards-incompatible for other users | Very low | Purely additive: new optional arg/env, new fallback below existing sources, no signature removed. L1 keeps env ahead of file. |
 | Token file readable by the wrong process | Low | The file already existed with restricted ACLs; the launcher passes only its **path**, and only to the 1Password child (L2/L3). |
 | Another session releases concurrently again | Medium (happened once) | `git pull --rebase` before tagging; re-check the three version locations (G3/G4). |
@@ -479,9 +492,9 @@ covered by the gates above.
   change is additive and CI-green; the alternative is living with the restart band-aid.
 - **Q2 (non-blocking, O1):** log the resolved `tokenSource` once at startup? Decide by
   whether future diagnosis is worth one extra log line.
-- **Q3 (non-blocking):** should `mcp.env`-driven MCPs get the same self-healing
-  treatment for *their* tokens? Out of scope here; raise separately if another MCP shows
-  the same symptom.
+- **Q3 (non-blocking):** should `mcp.env`-driven MCPs get the same late-file recovery
+  option for *their* tokens? Out of scope here; raise separately if another MCP shows
+  the same need.
 
 ---
 

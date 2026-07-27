@@ -12,7 +12,8 @@ user's MCP client. Nothing here is a secret committed to the repo.
 
 | Variable | Purpose | Default | Notes |
 |---|---|---|---|
-| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password Service Account token | — | Primary auth. Required unless a CLI flag or macOS Keychain provides the token. Treat like a master key. |
+| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password Service Account token | — | Primary auth. Required unless a token file, CLI flag, or macOS Keychain provides the token. Treat like a master key. |
+| `OP_SERVICE_ACCOUNT_TOKEN_FILE` | Path to a file containing the 1Password Service Account token | — | Cross-platform alternative for launchers and mounted secrets. The file content is secret. |
 | `OP_KEYCHAIN_SERVICE` | macOS Keychain service name to read the token from | — | macOS-only alternative to `OP_SERVICE_ACCOUNT_TOKEN`. |
 | `OP_KEYCHAIN_ACCOUNT` | macOS Keychain account to narrow the lookup | — | Optional; only used with `OP_KEYCHAIN_SERVICE`. |
 | `MCP_LOG_LEVEL` | Log level: `error`, `warn`, `info`, `debug` | `info` | Logs go to stderr. |
@@ -29,6 +30,7 @@ or `--flag=value`.
 | Flag | Overrides | Purpose |
 |---|---|---|
 | `--service-account-token` / `--token` | `OP_SERVICE_ACCOUNT_TOKEN` | Provide the token directly |
+| `--service-account-token-file` / `--token-file` | `OP_SERVICE_ACCOUNT_TOKEN_FILE` | Read the token from a file |
 | `--log-level <level>` | `MCP_LOG_LEVEL` / `MCP_DEBUG` | `error` \| `warn` \| `info` \| `debug` |
 | `--integration-name <name>` | `OP_INTEGRATION_NAME` | Custom SDK integration name |
 | `--integration-version <version>` | `OP_INTEGRATION_VERSION` | Custom SDK integration version |
@@ -40,11 +42,18 @@ or `--flag=value`.
 
 1. CLI flag (`--service-account-token` / `--token`)
 2. `OP_SERVICE_ACCOUNT_TOKEN`
-3. macOS Keychain (`OP_KEYCHAIN_SERVICE`, optionally narrowed by
-   `OP_KEYCHAIN_ACCOUNT`) — only attempted on `darwin` when 1 and 2 are absent
+3. Token file (`--service-account-token-file` / `--token-file` /
+   `OP_SERVICE_ACCOUNT_TOKEN_FILE`)
+4. macOS Keychain (`OP_KEYCHAIN_SERVICE`, optionally narrowed by
+   `OP_KEYCHAIN_ACCOUNT`) — only attempted on `darwin` when 1–3 are absent
 
-The resolved source is recorded as `tokenSource` (`args` | `env` | `keychain` |
-`missing`) and logged at startup.
+The resolved source is recorded as `tokenSource` (`args` | `env` | `file` |
+`keychain` | `missing`) and logged at startup.
+
+If startup finds no token, the first tool call checks the same sources one more
+time. This can recover when a configured token file appears or becomes readable
+after startup. A parent process cannot add a new environment variable to an
+already-running child, so environment-only setups still require a relaunch.
 
 ## Vault convention (u2giants)
 

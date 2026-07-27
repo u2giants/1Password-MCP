@@ -18,9 +18,16 @@
       "environmentVariables": [
         {
           "name": "OP_SERVICE_ACCOUNT_TOKEN",
-          "description": "The Service Account Token from 1Password (required unless OP_KEYCHAIN_SERVICE is used on macOS)",
+          "description": "The Service Account Token from 1Password (required unless a token file or OP_KEYCHAIN_SERVICE on macOS is used)",
           "isRequired": false,
           "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "OP_SERVICE_ACCOUNT_TOKEN_FILE",
+          "description": "Path to a file containing the 1Password Service Account Token",
+          "isRequired": false,
+          "isSecret": false,
           "format": "string"
         },
         {

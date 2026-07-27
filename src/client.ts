@@ -15,9 +15,9 @@ export function requireServiceAccountToken(): string {
   const config = getConfig();
   if (config.serviceAccountToken) return config.serviceAccountToken;
 
-  // The token is resolved once at startup, so a process that started without one
-  // would otherwise stay broken for its whole lifetime. Re-check the current
-  // args/env/token-file before giving up.
+  // Re-check configured sources before giving up. This mainly lets a token file
+  // recover when it appears or becomes readable after startup. A parent process
+  // cannot inject a new environment variable into an already-running child.
   const refreshed = refreshServiceAccountToken();
   if (refreshed) {
     log("info", "Recovered a service account token on retry.");

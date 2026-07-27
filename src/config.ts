@@ -87,8 +87,9 @@ export function readMacOsKeychainToken({
  *
  * The macOS Keychain fallback has no Windows/Linux equivalent, so a launcher on
  * those platforms can only pass the token through the environment -- and if the
- * process is ever started without it, the server is dead until it is restarted.
- * A file source lets any launcher point at a token on disk instead.
+ * process is started without it, an environment-only setup requires a restart.
+ * A file source lets any launcher point at a token on disk and can recover if
+ * that configured file appears or becomes readable after startup.
  */
 export function readTokenFile(
   path: string | undefined,
@@ -205,13 +206,9 @@ export function getConfig(): ServerConfig {
  * Re-resolve the service-account token against the CURRENT environment/args/file
  * and update the cached config.
  *
- * getConfig() resolves the token exactly once at startup and caches it forever, so
- * a process that happened to start without a token stayed broken for its entire
- * lifetime -- every call failing with "Service account token is required" until the
- * whole MCP host was restarted. (Seen 2026-07-26: the launcher only exported
- * OP_SERVICE_ACCOUNT_TOKEN on its cache-refresh path, so a reconnect during a fresh
- * cache window started this server tokenless.) Retrying the lookup costs nothing on
- * the happy path and lets the server recover on its own when a token source exists.
+ * getConfig() resolves the token once and caches it. Rechecking avoids a permanent
+ * failure when a configured token file appears or becomes readable after startup.
+ * It does not let a parent add an environment variable to an existing child process.
  *
  * Returns the token, or undefined if one still cannot be found.
  */
