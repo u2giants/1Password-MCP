@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { LOG_LEVEL_VALUES, type LogLevel } from "./types.js";
 
 export const SERVER_NAME = "1password-mcp";
-export const SERVER_VERSION = "2.6.1";
+export const SERVER_VERSION = "2.7.0";
 
 /** Parse a `--flag value` or `--flag=value` argument from process.argv. */
 function getArgValue(name: string): string | undefined {
