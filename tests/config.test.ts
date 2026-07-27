@@ -7,6 +7,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   getConfig,
   readMacOsKeychainToken,
+  readTokenFile,
+  refreshServiceAccountToken,
   resetConfig,
   resolveServiceAccountToken,
   SERVER_NAME,
@@ -182,6 +184,78 @@ describe("config", () => {
     expect(config.tokenSource).toBe("env");
     expect(config.serviceAccountToken).toBe("env-token");
     expect(readKeychainToken).not.toHaveBeenCalled();
+  });
+
+  it("resolves token from a token file when env/args are absent", () => {
+    const readTokenFileImpl = vi.fn(() => "file-token");
+    const readKeychainToken = vi.fn(() => "keychain-token");
+
+    const config = resolveServiceAccountToken({
+      env: {
+        OP_SERVICE_ACCOUNT_TOKEN_FILE: "/run/secrets/op-token",
+        OP_KEYCHAIN_SERVICE: "op-service-account",
+      },
+      readTokenFileImpl,
+      readKeychainToken,
+    });
+
+    expect(config.tokenSource).toBe("file");
+    expect(config.serviceAccountToken).toBe("file-token");
+    expect(readTokenFileImpl).toHaveBeenCalledWith("/run/secrets/op-token");
+    // File wins over the macOS-only keychain fallback.
+    expect(readKeychainToken).not.toHaveBeenCalled();
+  });
+
+  it("prefers env token over the token file", () => {
+    const readTokenFileImpl = vi.fn(() => "file-token");
+
+    const config = resolveServiceAccountToken({
+      env: {
+        OP_SERVICE_ACCOUNT_TOKEN: "env-token",
+        OP_SERVICE_ACCOUNT_TOKEN_FILE: "/run/secrets/op-token",
+      },
+      readTokenFileImpl,
+    });
+
+    expect(config.tokenSource).toBe("env");
+    expect(config.serviceAccountToken).toBe("env-token");
+    expect(readTokenFileImpl).not.toHaveBeenCalled();
+  });
+
+  it("reports missing when no source yields a token", () => {
+    const config = resolveServiceAccountToken({
+      env: {},
+      readTokenFileImpl: () => undefined,
+      readKeychainToken: () => undefined,
+    });
+
+    expect(config.tokenSource).toBe("missing");
+    expect(config.serviceAccountToken).toBeUndefined();
+  });
+
+  it("readTokenFile trims content and swallows unreadable paths", () => {
+    expect(readTokenFile("/tmp/token", (() => "  tok  ") as never)).toBe("tok");
+    expect(readTokenFile("/tmp/token", (() => "   ") as never)).toBeUndefined();
+    expect(
+      readTokenFile("/tmp/token", (() => {
+        throw new Error("ENOENT");
+      }) as never),
+    ).toBeUndefined();
+    expect(readTokenFile(undefined)).toBeUndefined();
+  });
+
+  it("refreshServiceAccountToken recovers a token after a tokenless start", () => {
+    // Simulate the launcher race: the server starts with no token at all...
+    process.argv = ["node", "index.js"];
+    delete process.env.OP_SERVICE_ACCOUNT_TOKEN;
+    delete process.env.OP_SERVICE_ACCOUNT_TOKEN_FILE;
+    expect(getConfig().tokenSource).toBe("missing");
+
+    // ...and a token source appears later.
+    process.env.OP_SERVICE_ACCOUNT_TOKEN = "late-token";
+    expect(refreshServiceAccountToken()).toBe("late-token");
+    expect(getConfig().serviceAccountToken).toBe("late-token");
+    expect(getConfig().tokenSource).toBe("env");
   });
 
   it("uses default integration name/version", () => {

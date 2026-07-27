@@ -3,6 +3,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { LOG_LEVEL_VALUES, type LogLevel } from "./types.js";
 
 export const SERVER_NAME = "1password-mcp";
@@ -32,7 +33,7 @@ export interface ServerConfig {
   /** Service account token (may be undefined until first use). */
   serviceAccountToken: string | undefined;
   /** Where the token came from. */
-  tokenSource: "args" | "env" | "keychain" | "missing";
+  tokenSource: "args" | "env" | "file" | "keychain" | "missing";
   /** Vault names that `op_run`/`op_check_ref` are permitted to resolve secret references from. */
   allowedVaults: string[];
 }
@@ -81,36 +82,72 @@ export function readMacOsKeychainToken({
   }
 }
 
+/**
+ * Read a service-account token from a file on disk.
+ *
+ * The macOS Keychain fallback has no Windows/Linux equivalent, so a launcher on
+ * those platforms can only pass the token through the environment -- and if the
+ * process is ever started without it, the server is dead until it is restarted.
+ * A file source lets any launcher point at a token on disk instead.
+ */
+export function readTokenFile(
+  path: string | undefined,
+  readFileImpl: typeof readFileSync = readFileSync,
+): string | undefined {
+  if (!path) return undefined;
+  try {
+    const token = readFileImpl(path, "utf8").toString().trim();
+    return token || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function resolveServiceAccountToken({
   tokenFromArgs,
+  tokenFileFromArgs,
   env = process.env,
   readKeychainToken = readMacOsKeychainToken,
+  readTokenFileImpl = readTokenFile,
 }: {
   tokenFromArgs?: string;
+  tokenFileFromArgs?: string;
   env?: NodeJS.ProcessEnv;
   readKeychainToken?: (options: {
     service?: string;
     account?: string;
   }) => string | undefined;
+  readTokenFileImpl?: (path: string | undefined) => string | undefined;
 } = {}): Pick<ServerConfig, "serviceAccountToken" | "tokenSource"> {
   const tokenFromEnv = env.OP_SERVICE_ACCOUNT_TOKEN;
-  let tokenFromKeychain: string | undefined;
+
+  let tokenFromFile: string | undefined;
   if (!tokenFromArgs && !tokenFromEnv) {
+    tokenFromFile = readTokenFileImpl(
+      tokenFileFromArgs ?? env.OP_SERVICE_ACCOUNT_TOKEN_FILE,
+    );
+  }
+
+  let tokenFromKeychain: string | undefined;
+  if (!tokenFromArgs && !tokenFromEnv && !tokenFromFile) {
     tokenFromKeychain = readKeychainToken({
       service: env.OP_KEYCHAIN_SERVICE,
       account: env.OP_KEYCHAIN_ACCOUNT,
     });
   }
 
-  const serviceAccountToken = tokenFromArgs ?? tokenFromEnv ?? tokenFromKeychain;
+  const serviceAccountToken =
+    tokenFromArgs ?? tokenFromEnv ?? tokenFromFile ?? tokenFromKeychain;
 
   const tokenSource: ServerConfig["tokenSource"] = tokenFromArgs
     ? "args"
     : tokenFromEnv
       ? "env"
-      : tokenFromKeychain
-        ? "keychain"
-        : "missing";
+      : tokenFromFile
+        ? "file"
+        : tokenFromKeychain
+          ? "keychain"
+          : "missing";
 
   return { serviceAccountToken, tokenSource };
 }
@@ -139,9 +176,13 @@ export function getConfig(): ServerConfig {
 
   const tokenFromArgs =
     getArgValue("service-account-token") ?? getArgValue("token");
+  const tokenFileFromArgs =
+    getArgValue("service-account-token-file") ?? getArgValue("token-file");
 
-  const { serviceAccountToken, tokenSource } =
-    resolveServiceAccountToken({ tokenFromArgs });
+  const { serviceAccountToken, tokenSource } = resolveServiceAccountToken({
+    tokenFromArgs,
+    tokenFileFromArgs,
+  });
 
   const allowedVaults = parseAllowedVaults(
     getArgValue("allowed-vaults") ?? process.env.OP_MCP_ALLOWED_VAULTS,
@@ -158,6 +199,39 @@ export function getConfig(): ServerConfig {
   };
 
   return _config;
+}
+
+/**
+ * Re-resolve the service-account token against the CURRENT environment/args/file
+ * and update the cached config.
+ *
+ * getConfig() resolves the token exactly once at startup and caches it forever, so
+ * a process that happened to start without a token stayed broken for its entire
+ * lifetime -- every call failing with "Service account token is required" until the
+ * whole MCP host was restarted. (Seen 2026-07-26: the launcher only exported
+ * OP_SERVICE_ACCOUNT_TOKEN on its cache-refresh path, so a reconnect during a fresh
+ * cache window started this server tokenless.) Retrying the lookup costs nothing on
+ * the happy path and lets the server recover on its own when a token source exists.
+ *
+ * Returns the token, or undefined if one still cannot be found.
+ */
+export function refreshServiceAccountToken(): string | undefined {
+  const config = getConfig();
+  if (config.serviceAccountToken) return config.serviceAccountToken;
+
+  const tokenFromArgs =
+    getArgValue("service-account-token") ?? getArgValue("token");
+  const tokenFileFromArgs =
+    getArgValue("service-account-token-file") ?? getArgValue("token-file");
+
+  const { serviceAccountToken, tokenSource } = resolveServiceAccountToken({
+    tokenFromArgs,
+    tokenFileFromArgs,
+  });
+
+  config.serviceAccountToken = serviceAccountToken;
+  config.tokenSource = tokenSource;
+  return serviceAccountToken;
 }
 
 /** Reset cached config (useful for testing). */

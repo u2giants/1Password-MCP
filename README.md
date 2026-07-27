@@ -127,7 +127,15 @@ If you do not want to store the service account token directly in your MCP confi
 }
 ```
 
-Precedence is: CLI arguments (`--service-account-token` / `--token`) > `OP_SERVICE_ACCOUNT_TOKEN` > macOS Keychain lookup. `OP_KEYCHAIN_ACCOUNT` is optional if your Keychain service name is already unique enough.
+Precedence is: CLI arguments (`--service-account-token` / `--token`) > `OP_SERVICE_ACCOUNT_TOKEN` > token file (`--service-account-token-file` / `--token-file` / `OP_SERVICE_ACCOUNT_TOKEN_FILE`) > macOS Keychain lookup. `OP_KEYCHAIN_ACCOUNT` is optional if your Keychain service name is already unique enough.
+
+**Token file (v2.6.0+).** Point the server at a file containing the token, e.g.
+`"OP_SERVICE_ACCOUNT_TOKEN_FILE": "/run/secrets/op-service-account"`. This is the
+cross-platform equivalent of the macOS-only Keychain fallback: it keeps the secret
+out of the MCP config and out of the process environment, and — because the server
+re-checks its token sources when a call finds none — it lets a server that was
+launched without a token recover on its own instead of failing every call until the
+MCP host is restarted.
 
 ### OpenAI Codex (TOML)
 
