@@ -20,11 +20,23 @@
 | 4 | Server: token-file source + limited retry + better error | ✅ done 2026-07-26 | this repo `83af486` |
 | 5 | Server: version bump to 2.7.0, full retry tests, docs, registry metadata | ✅ done 2026-07-27 | this repo `main` |
 | 6 | Publish v2.7.0 to npm (tag `v2.7.0`) | ✅ done 2026-07-27 | tag at `a980f6e`; run `30304069536` |
-| 7 | Restart Claude Code and verify the MCP comes up with a token | ⬜ open | § 9 Step 7 |
-| 8 | Update docs/memory to say the fix is live | ⬜ open (blocked by 7) | § 9 Step 8 |
+| 7 | Restart Claude Code and verify the MCP comes up with a token | ✅ done 2026-07-27 | verified live: `vault_list` via the MCP returned `vibe_coding` |
+| 8 | Update docs/memory to say the fix is live | ✅ done 2026-07-27 | memory `onepassword-mcp-token-race.md` + its index line |
 
-**A fresh session starts at Step 7.** Steps 1–6 are committed, pushed, and published; verify
-with the commands in § 5 rather than redoing them.
+**✅ THIS PLAN IS COMPLETE (2026-07-27). No open steps.** All 8 steps are done:
+2.7.0 is published to npm (`npm view @u2giants/1password-mcp version` → `2.7.0`), the
+MCP was verified live from a restarted session (`vault_list` returned `vibe_coding`),
+and the memory entry records the fix as live.
+
+Keep this file as the record of WHY the code looks the way it does (§ 6 root causes,
+§ 7 rejected approaches, § 8 locked decisions) — it is referenced from `AGENTS.md`.
+Delete it only if this token-resolution design is replaced outright.
+
+**One correction worth carrying forward** (made in `a980f6e`, reflected in § 6/§ 8):
+the retry in `requireServiceAccountToken()` recovers a **token FILE** that appears or
+becomes readable after startup. It does **not** rescue an env-only setup — a parent
+cannot inject an environment variable into an already-running child, so env-only
+configs still require a restart. Do not describe the server as generally "self-healing".
 
 > **End-of-step drift check (mandatory).** When you finish a step, re-read the
 > remaining steps below through the end of this plan and report any drift — anything
