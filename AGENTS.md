@@ -60,6 +60,7 @@ Then load additional docs only when relevant:
 | Continue unfinished work | `AGENTS.md`, `HANDOFF.md`, docs named inside `HANDOFF.md` | Docs unrelated to the handoff scope |
 | Claude Code session | `CLAUDE.md`, then `AGENTS.md` | Other docs unless the task requires them |
 | Documentation-only cleanup | `AGENTS.md`, `README.md`, affected docs under `docs/`, `PUBLISHING.md` | Source files except as needed to verify accuracy |
+| Service-account token handling, "Service account token is required" errors, token sources/precedence, or the ai-devops MCP launcher | **`plan_service-account-token-resilience.md` — read its STATUS table FIRST; do not re-derive or re-plan it**, then `src/config.ts`, `src/client.ts` | Unrelated tool/prompt docs |
 
 Rules: this map is task-based, distinguishes always-read from task-relevant docs,
 and must be updated whenever a doc is added, removed, renamed, or repurposed.
