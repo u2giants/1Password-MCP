@@ -26,6 +26,13 @@
 **A fresh session starts at Step 6.** Steps 1–5 are committed and pushed; verify
 with the commands in § 5 rather than redoing them.
 
+> **End-of-step drift check (mandatory).** When you finish a step, re-read the
+> remaining steps below through the end of this plan and report any drift — anything
+> you did or learned that changes a later step's assumptions, commands, versions, file
+> paths, or decisions. Then update this file's STATUS table and the affected step text
+> before moving on. A plan goes stale the moment someone executes part of it, and the
+> person who executed it owns the update.
+
 ---
 
 # Part 1 — Why
@@ -350,11 +357,13 @@ Depends on Step 7 passing.
 2. Update the memory entry `onepassword-mcp-token-race.md` (in Albert's Claude memory
    directory) — it currently says the fix is committed but **not published**; change it
    to say 2.7.0 is live and the required npm version.
-3. **O2:** add a one-line link to this plan from this repo's `AGENTS.md` so it is
-   discoverable by path, not by memory.
+3. ~~**O2:** add a link to this plan from this repo's `AGENTS.md`.~~ **✅ DONE
+   2026-07-26** in the same commit that added this plan — see the
+   "Service-account token handling" row of the AGENTS.md documentation map. Decision
+   **O2 is therefore closed.** Nothing to do here.
 
-**Verification gate:** a fresh reader of `AGENTS.md` can find this plan, and the memory
-entry no longer claims the fix is unpublished.
+**Verification gate:** a fresh reader of `AGENTS.md` can find this plan (already true),
+and the memory entry no longer claims the fix is unpublished.
 
 ## 10. Tests required
 
