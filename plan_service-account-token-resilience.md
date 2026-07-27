@@ -5,8 +5,8 @@
 **Companion repo:** `u2giants/ai-devops` (the MCP launcher — half of this fix lives there)
 
 > Read the STATUS table first. Most of this work is **already done and pushed**.
-> The only thing standing between the fix and reality is **Step 6 (publish the
-> release tag)**. Do not re-derive or re-plan the earlier steps.
+> Version 2.7.0 is published. The remaining work starts at **Step 7 (restart and
+> live MCP verification)**. Do not re-derive or re-plan the earlier steps.
 
 ---
 
@@ -19,11 +19,11 @@
 | 3 | Launcher: also pass `OP_SERVICE_ACCOUNT_TOKEN_FILE` (path, not secret) | ✅ done 2026-07-26 | ai-devops `f5b7646` |
 | 4 | Server: token-file source + limited retry + better error | ✅ done 2026-07-26 | this repo `83af486` |
 | 5 | Server: version bump to 2.7.0, full retry tests, docs, registry metadata | ✅ done 2026-07-27 | this repo `main` |
-| 6 | **Publish v2.7.0 to npm (tag `v2.7.0`)** | ⬜ **OPEN — needs Albert's go-ahead** | § 9 Step 6 |
-| 7 | Restart Claude Code and verify the MCP comes up with a token | ⬜ open (blocked by 6) | § 9 Step 7 |
+| 6 | Publish v2.7.0 to npm (tag `v2.7.0`) | ✅ done 2026-07-27 | tag at `a980f6e`; run `30304069536` |
+| 7 | Restart Claude Code and verify the MCP comes up with a token | ⬜ open | § 9 Step 7 |
 | 8 | Update docs/memory to say the fix is live | ⬜ open (blocked by 7) | § 9 Step 8 |
 
-**A fresh session starts at Step 6.** Steps 1–5 are committed and pushed; verify
+**A fresh session starts at Step 7.** Steps 1–6 are committed, pushed, and published; verify
 with the commands in § 5 rather than redoing them.
 
 > **End-of-step drift check (mandatory).** When you finish a step, re-read the
@@ -145,7 +145,7 @@ redo:
 ```bash
 git -C C:/repos/1password-mcp log --oneline -3        # expect eb38c01, 83af486
 git -C C:/repos/ai-devops   log --oneline -3 -- bin/mcp-secret-launch.ps1   # expect f5b7646, 81954f8
-npm view @u2giants/1password-mcp version              # expect 2.6.1  <-- the gap
+npm view @u2giants/1password-mcp version              # expect 2.7.0
 node -p "require('./package.json').version"           # in this repo: expect 2.7.0
 ```
 
@@ -164,7 +164,7 @@ node -p "require('./package.json').version"           # in this repo: expect 2.7
 | `package.json`, `server.json`, `src/config.ts:10` | Version **2.7.0** (all three must stay in sync). |
 
 **State:** on `main`, pushed, CI green (`gh run list --repo u2giants/1Password-MCP`).
-**NOT published to npm** — npm `latest` is still **2.6.1**.
+**Published to npm** — npm `latest` is **2.7.0**.
 
 ### The launcher repo (`ai-devops`), commits `81954f8` + `f5b7646`
 
@@ -291,7 +291,11 @@ table, **stop and reconcile before continuing** — someone else has been workin
 
 ---
 
-### Step 6 — Publish v2.7.0 to npm ⬜ **OPEN — REQUIRES ALBERT'S EXPLICIT GO-AHEAD**
+### Step 6 — Publish v2.7.0 to npm ✅ **DONE 2026-07-27**
+
+Albert approved the public release in chat. Tag `v2.7.0` points to `a980f6e`.
+GitHub Actions run `30304069536` completed successfully, and npm reports both
+`version` and the `latest` tag as `2.7.0`.
 
 **Why this is gated:** publishing to the public npm registry is outward-facing and
 effectively irreversible (npm heavily restricts unpublishing). An AI session must not
@@ -471,8 +475,8 @@ covered by the gates above.
 - [x] Token-file, both CLI aliases, and full client retry covered; full suite green
   (128 tests); `tsc --noEmit` clean; build clean.
 - [x] CI green on `main`.
-- [ ] Albert has explicitly approved the npm publish.
-- [ ] `v2.7.0` tag pushed; release workflow succeeded; `npm view … version` = `2.7.0`.
+- [x] Albert explicitly approved the npm publish on 2026-07-27.
+- [x] `v2.7.0` tag pushed; release run `30304069536` succeeded; npm `latest` = `2.7.0`.
 - [ ] Claude Code restarted; `vault_list` succeeds through the MCP.
 - [ ] Scoping re-verified: 1Password child `TOKEN_PRESENT`, other child `TOKEN_MISSING`.
 - [ ] STATUS table, memory entry, and `AGENTS.md` link updated (Step 8).
@@ -487,9 +491,8 @@ covered by the gates above.
 | Restart doesn't pick up the new version | Low | `npx` may serve a cached copy; force with `npx -y @u2giants/1password-mcp@2.7.0` or clear the `_npx` cache under `%LOCALAPPDATA%\npm-cache\_npx`. |
 
 **Open questions**
-- **Q1 (blocking Step 6):** does Albert approve publishing 2.7.0 to the public npm
-  registry? *Decision criteria:* it is the only way the fix reaches the machines; the
-  change is additive and CI-green; the alternative is living with the restart band-aid.
+- **Q1 resolved 2026-07-27:** Albert approved publishing 2.7.0. Release run
+  `30304069536` succeeded and npm `latest` now points to 2.7.0.
 - **Q2 (non-blocking, O1):** log the resolved `tokenSource` once at startup? Decide by
   whether future diagnosis is worth one extra log line.
 - **Q3 (non-blocking):** should `mcp.env`-driven MCPs get the same late-file recovery
@@ -504,9 +507,8 @@ covered by the gates above.
 anything?** Yes. § 2 defines the app, repos, branch, stack and the `npx`-from-registry
 mechanic; § 5 gives exact commands to confirm what is already done; § 9 gives every
 remaining step with concrete commands and verification gates; § 12 lists paths, machine
-quirks and auth. The single thing it must *ask* is Q1 — and that is an intentional
-human-approval gate (publishing publicly), explicitly flagged in Step 6 and § 13, not a
-knowledge gap.
+quirks and auth. Publishing approval is recorded as resolved in Step 6 and § 13.
+The next fresh session can start directly at Step 7.
 
 **2. Does it carry every piece of background, nuance and reasoning?** Yes. Both defects
 are documented with `file:line` evidence (§ 6); six rejected approaches with reasons and
