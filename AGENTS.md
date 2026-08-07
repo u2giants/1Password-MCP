@@ -52,15 +52,15 @@ Then load additional docs only when relevant:
 |---|---|---|
 | Quick repo orientation | `README.md`, `AGENTS.md` | Deep docs under `docs/` unless task requires them |
 | Modify a tool/prompt/resource or other app behavior | `AGENTS.md`, `docs/architecture.md`, the relevant `src/**` file and its test | `PUBLISHING.md`, `docs/deployment` topics unless release behavior changes |
-| Add or change configuration, env vars, CLI flags, or runtime settings | `AGENTS.md`, `docs/configuration.md`, `src/config.ts` | Architecture deep-dive unless data flow changes |
-| Change local setup, dev scripts, test/lint/debug workflow, or package scripts | `AGENTS.md`, `docs/development.md`, `CONTRIBUTING.md` | `PUBLISHING.md` unless CI/CD changes |
+| Add or change configuration, env vars, CLI flags, or runtime settings | `AGENTS.md`, [configuration reference for supported settings and precedence](docs/configuration.md), `src/config.ts` | Architecture deep-dive unless data flow changes |
+| Change local setup, dev scripts, test/lint/debug workflow, or package scripts | `AGENTS.md`, [development guide for local setup, checks, and debugging](docs/development.md), `CONTRIBUTING.md` | `PUBLISHING.md` unless CI/CD changes |
 | Change release/publish, GitHub Actions, npm publishing, tags, or rollback | `AGENTS.md`, `PUBLISHING.md`, `.github/workflows/release.yml` | Local-only development docs unless needed |
 | Change versioning (bump a release) | `AGENTS.md`, `PUBLISHING.md`, `scripts/bump-version.mjs`, `CHANGELOG.md` | Architecture/config docs unless the change is more than a version bump |
 | Investigate a bug or incident | `AGENTS.md`, `docs/architecture.md`, the affected `src/**` file, `HANDOFF.md` if present, [Critical incidents](#critical-incidents) | Unrelated docs |
 | Continue unfinished work | `AGENTS.md`, `HANDOFF.md`, docs named inside `HANDOFF.md` | Docs unrelated to the handoff scope |
 | Claude Code session | `CLAUDE.md`, then `AGENTS.md` | Other docs unless the task requires them |
 | Documentation-only cleanup | `AGENTS.md`, `README.md`, affected docs under `docs/`, `PUBLISHING.md` | Source files except as needed to verify accuracy |
-| Service-account token handling, "Service account token is required" errors, token sources/precedence, or the ai-devops MCP launcher | **`plan_service-account-token-resilience.md` — read its STATUS table FIRST; do not re-derive or re-plan it**, then `src/config.ts`, `src/client.ts` | Unrelated tool/prompt docs |
+| Service-account token handling, "Service account token is required" errors, token sources/precedence, or the ai-devops MCP launcher | `docs/configuration.md`, `src/config.ts`, `src/client.ts`; for incident history only, use the [completed token-resilience plan and its root-cause record](archive/completed-work/service-account-token-resilience-plan.md) | Unrelated tool/prompt docs |
 
 Rules: this map is task-based, distinguishes always-read from task-relevant docs,
 and must be updated whenever a doc is added, removed, renamed, or repurposed.
